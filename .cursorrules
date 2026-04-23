@@ -1,0 +1,12 @@
+# 장흥식품 ERP 웹 개발 원칙
+
+1. 기술 스택: Next.js (App Router), React, TypeScript, Tailwind CSS, Supabase
+2. UI 라이브러리: 무조건 `shadcn/ui`와 `lucide-react` 아이콘만 사용할 것. 디자인은 심플하고 엑셀과 비슷한 느낌의 테이블 형태를 우선할 것.
+3. 데이터 페칭: 서버 데이터는 `@tanstack/react-query`, 전역 상태는 `zustand`를 사용할 것.
+4. 파일 구조: 
+   - 페이지는 `src/app/`
+   - 컴포넌트는 `src/components/`
+   - 로직 및 유틸은 `src/lib/`
+5. 언어 및 타입: 철저하게 TypeScript를 사용하고 `any` 타입 사용을 지양할 것.
+6. 응답: 설명은 짧게 하고, 즉시 실행 가능한 완성된 코드를 제공할 것.
+7. 입력 UX: 모든 입력 폼과 테이블은 'Enter'키를 누르면 다음 칸으로 포커스가 이동하도록 구현할 것.
