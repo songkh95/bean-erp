@@ -19,6 +19,7 @@ export type Database = {
           created_at: string | null;
           customer_id: string | null;
           id: string;
+          is_active: boolean;
           price: number;
           product_id: string | null;
           updated_at: string | null;
@@ -27,6 +28,7 @@ export type Database = {
           created_at?: string | null;
           customer_id?: string | null;
           id?: string;
+          is_active?: boolean;
           price: number;
           product_id?: string | null;
           updated_at?: string | null;
@@ -35,6 +37,7 @@ export type Database = {
           created_at?: string | null;
           customer_id?: string | null;
           id?: string;
+          is_active?: boolean;
           price?: number;
           product_id?: string | null;
           updated_at?: string | null;
@@ -105,6 +108,33 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      delivery_drivers: {
+        Row: {
+          created_at: string;
+          id: string;
+          is_active: boolean;
+          name: string;
+          region_groups: string[];
+          vehicle_number: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          name: string;
+          region_groups?: string[];
+          vehicle_number: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          name?: string;
+          region_groups?: string[];
+          vehicle_number?: string;
+        };
+        Relationships: [];
       };
       inventory_transactions: {
         Row: {
@@ -273,6 +303,7 @@ export type Database = {
         Row: {
           created_at: string | null;
           customer_id: string | null;
+          delivery_status: string;
           id: string;
           is_paid: boolean | null;
           product_id: string | null;
@@ -286,6 +317,7 @@ export type Database = {
         Insert: {
           created_at?: string | null;
           customer_id?: string | null;
+          delivery_status?: string;
           id?: string;
           is_paid?: boolean | null;
           product_id?: string | null;
@@ -299,6 +331,7 @@ export type Database = {
         Update: {
           created_at?: string | null;
           customer_id?: string | null;
+          delivery_status?: string;
           id?: string;
           is_paid?: boolean | null;
           product_id?: string | null;
