@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
-import { SidebarNav } from "@/components/layout/sidebar-nav";
+import { AppShell } from "@/components/layout/app-shell";
 import { AppProviders } from "@/components/providers/app-providers";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -36,10 +36,7 @@ export default function RootLayout({
       <body className="min-h-full bg-slate-50 text-slate-900">
         <AppProviders>
           <Toaster richColors position="top-right" />
-          <div className="flex min-h-screen">
-            <SidebarNav />
-            <main className="flex-1 p-6">{children}</main>
-          </div>
+          <AppShell>{children}</AppShell>
         </AppProviders>
       </body>
     </html>
