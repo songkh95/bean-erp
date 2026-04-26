@@ -100,7 +100,20 @@ export function InvoicePage() {
 
   const filteredCustomers = useMemo(() => {
     const q = customerKeyword.trim().toLowerCase();
-    const allOption: CustomerRow = { id: "all", code: "ALL", name: "전체", address: null, ceo_name: null, created_at: null, is_active: null, phone: null, region_id: null, tax_type: null, updated_at: null };
+    const allOption: CustomerRow = {
+      id: "all",
+      code: "ALL",
+      name: "전체",
+      company_id: null,
+      address: null,
+      ceo_name: null,
+      created_at: null,
+      is_active: null,
+      phone: null,
+      region_id: null,
+      tax_type: null,
+      updated_at: null,
+    };
     if (!q || "전체".includes(q)) {
       return [allOption, ...customers];
     }

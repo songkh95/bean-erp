@@ -4,11 +4,15 @@ import { createBrowserClient } from "@supabase/ssr";
 
 import type { Database } from "@/types/database.types";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-
-if (!supabaseUrl || !supabasePublishableKey) {
-  throw new Error("Supabase env vars are not configured.");
+function requireEnv(name: "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required env var: ${name}`);
+  }
+  return value;
 }
+
+const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
+const supabasePublishableKey = requireEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
 
 export const supabase = createBrowserClient<Database>(supabaseUrl, supabasePublishableKey);
