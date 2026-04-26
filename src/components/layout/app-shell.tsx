@@ -1,11 +1,15 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
-import { SidebarNav } from "@/components/layout/sidebar-nav";
+const SidebarNav = dynamic(
+  () => import("@/components/layout/sidebar-nav").then((m) => m.SidebarNav),
+  { ssr: true },
+);
 
-const AUTH_PATHS = new Set(["/login", "/signup"]);
+const AUTH_PATHS = new Set(["/login", "/signup", "/forgot-password", "/update-password"]);
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();

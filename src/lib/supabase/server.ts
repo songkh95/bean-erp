@@ -1,23 +1,20 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+import { getSupabaseAnonKey, getSupabaseUrl, isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Database } from "@/types/database.types";
 
-function requireEnv(name: "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required env var: ${name}`);
-  }
-  return value;
-}
-
-const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
-const supabasePublishableKey = requireEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
-
 export async function createClient() {
+  if (!isSupabaseConfigured()) {
+    throw new Error(
+      "Supabase 환경 변수가 없습니다. Vercel에 NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY 를 설정하거나, " +
+        "서버에서만 쓰는 SUPABASE_URL, SUPABASE_ANON_KEY(또는 SUPABASE_PUBLISHABLE_KEY)를 동일 값으로 넣고 재배포하세요."
+    );
+  }
+
   const cookieStore = await cookies();
 
-  return createServerClient<Database>(supabaseUrl, supabasePublishableKey, {
+  return createServerClient<Database>(getSupabaseUrl(), getSupabaseAnonKey(), {
     cookies: {
       getAll() {
         return cookieStore.getAll();

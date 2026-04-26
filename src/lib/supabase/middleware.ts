@@ -1,23 +1,18 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { getSupabaseAnonKey, getSupabaseUrl, isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Database } from "@/types/database.types";
-
-function requireEnv(name: "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required env var: ${name}`);
-  }
-  return value;
-}
-
-const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
-const supabasePublishableKey = requireEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient<Database>(supabaseUrl, supabasePublishableKey, {
+  if (!isSupabaseConfigured()) {
+    // Edge/Proxy에서 env 미주입·이전 캐시 빌드 등: 세션 갱신 생략, 로그인 없이 처리
+    return { response, user: null };
+  }
+
+  const supabase = createServerClient<Database>(getSupabaseUrl(), getSupabaseAnonKey(), {
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -32,7 +27,6 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // getUser() forces token revalidation and refresh path in middleware.
   const {
     data: { user },
   } = await supabase.auth.getUser();
