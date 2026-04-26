@@ -37,7 +37,6 @@ async function fetchProductsAndPrices(customerId: string) {
     supabase
       .from("products")
       .select("id, code, name, specification, is_active")
-      .eq("is_active", true)
       .order("code", { ascending: true }),
     supabase
       .from("customer_prices")
@@ -92,7 +91,8 @@ export function PriceManagement() {
     for (const product of products) {
       const current = priceMap.get(product.id);
       nextPriceDrafts[product.id] = current === undefined ? "" : String(current.price);
-      nextActiveDrafts[product.id] = current?.isActive ?? false;
+      // 거래처-품목 단가 행이 아직 없더라도, 등록된 품목은 기본적으로 ON에서 바로 편집 가능하게 한다.
+      nextActiveDrafts[product.id] = current?.isActive ?? true;
     }
     setPriceDrafts(nextPriceDrafts);
     setActiveDrafts(nextActiveDrafts);
@@ -157,7 +157,7 @@ export function PriceManagement() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold">단가 관리</h2>
-          <p className="text-sm text-slate-600">거래처별 품목 단가를 빠르게 입력하고 저장합니다.</p>
+          <p className="text-sm text-slate-600">거래처별 품목 단가를 빠르게 입력하고 저장합니다. (사용/미사용 품목 모두 표시)</p>
         </div>
         <Button onClick={() => saveMutation.mutate()} disabled={!selectedCustomerId || saveMutation.isPending}>
           단가 일괄 저장

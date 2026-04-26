@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -106,6 +106,22 @@ export function DriverManagement() {
     },
     onError: (error) => {
       toast.error(error.message || "저장 중 오류가 발생했습니다.");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (driverId: string) => {
+      const { error } = await supabase.from("delivery_drivers").delete().eq("id", driverId);
+      if (error) {
+        throw error;
+      }
+    },
+    onSuccess: async () => {
+      toast.success("배송기사가 삭제되었습니다.");
+      await queryClient.invalidateQueries({ queryKey: ["delivery-drivers"] });
+    },
+    onError: (error) => {
+      toast.error(error.message || "삭제 중 오류가 발생했습니다.");
     },
   });
 
@@ -219,19 +235,20 @@ export function DriverManagement() {
             <TableHead>담당 지역</TableHead>
             <TableHead>사용여부</TableHead>
             <TableHead className="w-24">수정</TableHead>
+            <TableHead className="w-24">삭제</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {isLoading && (
             <TableRow>
-              <TableCell colSpan={5} className="py-8 text-center text-slate-500">
+              <TableCell colSpan={6} className="py-8 text-center text-slate-500">
                 데이터를 불러오는 중입니다...
               </TableCell>
             </TableRow>
           )}
           {!isLoading && drivers.length === 0 && (
             <TableRow>
-              <TableCell colSpan={5} className="py-8 text-center text-slate-500">
+              <TableCell colSpan={6} className="py-8 text-center text-slate-500">
                 등록된 배송기사가 없습니다.
               </TableCell>
             </TableRow>
@@ -251,6 +268,22 @@ export function DriverManagement() {
                   <TableCell>
                     <Button variant="outline" size="sm" onClick={() => openEditDialog(driver)}>
                       <Pencil className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => {
+                        const ok = window.confirm(`${driver.name} 기사 정보를 삭제하시겠습니까?`);
+                        if (!ok || deleteMutation.isPending) {
+                          return;
+                        }
+                        deleteMutation.mutate(driver.id);
+                      }}
+                      disabled={deleteMutation.isPending}
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </TableCell>
                 </TableRow>

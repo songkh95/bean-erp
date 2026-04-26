@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -91,6 +91,23 @@ export function ProductManagement() {
     },
     onError: (error) => {
       toast.error(error.message || "저장 중 오류가 발생했습니다.");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (productId: string) => {
+      const { error } = await supabase.from("products").delete().eq("id", productId);
+      if (error) {
+        throw error;
+      }
+    },
+    onSuccess: async () => {
+      toast.success("품목이 삭제되었습니다.");
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      await queryClient.invalidateQueries({ queryKey: ["prices", "editor"] });
+    },
+    onError: (error) => {
+      toast.error(error.message || "삭제 중 오류가 발생했습니다.");
     },
   });
 
@@ -217,19 +234,20 @@ export function ProductManagement() {
             <TableHead>규격</TableHead>
             <TableHead>사용여부</TableHead>
             <TableHead className="w-24">수정</TableHead>
+            <TableHead className="w-24">삭제</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {isLoading && (
             <TableRow>
-              <TableCell colSpan={5} className="py-8 text-center text-slate-500">
+              <TableCell colSpan={6} className="py-8 text-center text-slate-500">
                 데이터를 불러오는 중입니다...
               </TableCell>
             </TableRow>
           )}
           {!isLoading && (products?.length ?? 0) === 0 && (
             <TableRow>
-              <TableCell colSpan={5} className="py-8 text-center text-slate-500">
+              <TableCell colSpan={6} className="py-8 text-center text-slate-500">
                 등록된 품목이 없습니다.
               </TableCell>
             </TableRow>
@@ -243,6 +261,24 @@ export function ProductManagement() {
               <TableCell>
                 <Button variant="outline" size="sm" onClick={() => openEditDialog(product)}>
                   <Pencil className="h-4 w-4" />
+                </Button>
+              </TableCell>
+              <TableCell>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    const ok = window.confirm(
+                      `[${product.code}] ${product.name} 품목을 삭제하시겠습니까?\n관련 데이터가 있으면 삭제가 거부됩니다.`,
+                    );
+                    if (!ok || deleteMutation.isPending) {
+                      return;
+                    }
+                    deleteMutation.mutate(product.id);
+                  }}
+                  disabled={deleteMutation.isPending}
+                >
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </TableCell>
             </TableRow>
