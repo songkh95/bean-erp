@@ -1,6 +1,6 @@
 "use client";
 
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
 import type { Database } from "@/types/database.types";
 
@@ -11,4 +11,4 @@ if (!supabaseUrl || !supabasePublishableKey) {
   throw new Error("Supabase env vars are not configured.");
 }
 
-export const supabase = createClient<Database>(supabaseUrl, supabasePublishableKey);
+export const supabase = createBrowserClient<Database>(supabaseUrl, supabasePublishableKey);
