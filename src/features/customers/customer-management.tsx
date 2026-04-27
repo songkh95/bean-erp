@@ -41,6 +41,13 @@ const initialForm: CustomerInsert = {
   is_active: true,
 };
 
+function getCustomerSaveErrorMessage(error: { code?: string; message?: string }) {
+  if (error.code === "23505") {
+    return "동일한 거래처코드가 이미 존재합니다. (회사별 코드 중복 또는 DB 제약 확인 필요)";
+  }
+  return error.message || "저장 중 오류가 발생했습니다.";
+}
+
 async function fetchCustomers() {
   const { data, error } = await supabase
     .from("customers")
@@ -184,7 +191,7 @@ export function CustomerManagement() {
       await queryClient.invalidateQueries({ queryKey: ["regions"] });
     },
     onError: (error) => {
-      toast.error(error.message || "저장 중 오류가 발생했습니다.");
+      toast.error(getCustomerSaveErrorMessage(error));
     },
   });
 

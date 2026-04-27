@@ -21,7 +21,10 @@ const menuItems = [
   { href: "/drivers", label: "배송기사 관리", icon: Truck },
   { href: "/sales/daily", label: "일일 판매 등록", icon: ClipboardList },
   { href: "/sales/delivery-sheet", label: "배송지시서 출력", icon: ClipboardList, isChild: true },
-  { href: "/settlement/invoice", label: "거래명세서", icon: FileText },
+  { href: "/settlement/invoice", label: "정산 관리", icon: FileText, matchPrefix: "/settlement" },
+  { href: "/settlement/invoice", label: "└ 거래명세서", icon: FileText, isChild: true },
+  { href: "/settlement/deposits", label: "└ 입금 등록", icon: FileText, isChild: true },
+  { href: "/settlement/balances", label: "└ 미수금 현황", icon: FileText, isChild: true },
 ];
 
 export function SidebarNav() {
@@ -102,12 +105,13 @@ export function SidebarNav() {
           <p className="mt-1 text-xs text-slate-500">기준정보 관리</p>
         </div>
         <nav className="space-y-1 p-3">
-          {menuItems.map(({ href, icon: Icon, label, isChild }) => {
-            const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
+          {menuItems.map(({ href, icon: Icon, label, isChild, matchPrefix }) => {
+            const activeBase = matchPrefix ?? href;
+            const isActive = href === "/" ? pathname === "/" : pathname.startsWith(activeBase);
 
             return (
               <Link
-                key={href}
+                key={`${href}-${label}`}
                 href={href}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100",

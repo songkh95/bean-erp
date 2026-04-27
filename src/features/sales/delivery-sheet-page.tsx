@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -34,6 +34,7 @@ type EnrichedRow = SalesRow & {
   regionCode: string;
   included: boolean;
 };
+const EMPTY_ROWS: SalesRow[] = [];
 
 function getToday() {
   const now = new Date();
@@ -107,13 +108,14 @@ export function DeliverySheetPage() {
   const [appliedEndDate, setAppliedEndDate] = useState(getToday());
   const [selectedDriverId, setSelectedDriverId] = useState<string>("");
   const [appliedDriverId, setAppliedDriverId] = useState<string>("");
-  const [includedMap, setIncludedMap] = useState<Record<string, boolean>>({});
+  const [excludedMap, setExcludedMap] = useState<Record<string, boolean>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const { data: sales = [], isLoading } = useQuery({
+  const { data: salesData, isLoading } = useQuery({
     queryKey: ["delivery-sheet-sales", appliedStartDate, appliedEndDate],
     queryFn: () => fetchSales(appliedStartDate, appliedEndDate),
   });
+  const sales = salesData ?? EMPTY_ROWS;
   const { data: customers = [] } = useQuery({
     queryKey: ["delivery-sheet-customers"],
     queryFn: fetchCustomers,
@@ -130,21 +132,6 @@ export function DeliverySheetPage() {
     queryKey: ["delivery-sheet-drivers"],
     queryFn: fetchDrivers,
   });
-
-  useEffect(() => {
-    if (sales.length === 0) {
-      setIncludedMap({});
-      return;
-    }
-
-    setIncludedMap((prev) => {
-      const next: Record<string, boolean> = {};
-      for (const row of sales) {
-        next[row.id] = prev[row.id] ?? true;
-      }
-      return next;
-    });
-  }, [sales]);
 
   const customerById = useMemo(() => {
     const map = new Map<string, CustomerRow>();
@@ -181,10 +168,10 @@ export function DeliverySheetPage() {
         productName: product?.name ?? "-",
         regionName: region?.name ?? "-",
         regionCode: region?.code ?? "",
-        included: includedMap[row.id] ?? true,
+        included: !excludedMap[row.id],
       };
     });
-  }, [customerById, includedMap, productById, regionById, sales]);
+  }, [customerById, excludedMap, productById, regionById, sales]);
 
   const selectedDriver = useMemo(
     () => drivers.find((driver) => driver.id === appliedDriverId) ?? null,
@@ -204,10 +191,24 @@ export function DeliverySheetPage() {
   const offRows = useMemo(() => filteredRowsByDriver.filter((row) => !row.included), [filteredRowsByDriver]);
 
   const toggleIncluded = (salesId: string, checked: boolean) => {
-    setIncludedMap((prev) => ({
-      ...prev,
-      [salesId]: checked,
-    }));
+    setExcludedMap((prev) => {
+      if (checked) {
+        if (!prev[salesId]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[salesId];
+        return next;
+      }
+
+      if (prev[salesId]) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [salesId]: true,
+      };
+    });
   };
 
   const printRows = useMemo(() => {
@@ -255,6 +256,7 @@ export function DeliverySheetPage() {
     setAppliedStartDate(startDateInput);
     setAppliedEndDate(endDateInput);
     setAppliedDriverId(selectedDriverId);
+    setExcludedMap({});
   };
 
   return (

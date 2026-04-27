@@ -229,6 +229,54 @@ export type Database = {
           },
         ];
       };
+      deposits: {
+        Row: {
+          amount: number;
+          company_id: string;
+          created_at: string;
+          customer_id: string;
+          deposit_date: string;
+          id: string;
+          note: string | null;
+          payment_method: string;
+        };
+        Insert: {
+          amount: number;
+          company_id?: string;
+          created_at?: string;
+          customer_id: string;
+          deposit_date: string;
+          id?: string;
+          note?: string | null;
+          payment_method?: string;
+        };
+        Update: {
+          amount?: number;
+          company_id?: string;
+          created_at?: string;
+          customer_id?: string;
+          deposit_date?: string;
+          id?: string;
+          note?: string | null;
+          payment_method?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "deposits_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "deposits_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       inventory_transactions: {
         Row: {
           company_id: string | null;
@@ -517,7 +565,18 @@ export type Database = {
       };
     };
     Views: {
-      [_ in never]: never;
+      customer_balances: {
+        Row: {
+          company_id: string | null;
+          customer_code: string | null;
+          customer_id: string | null;
+          customer_name: string | null;
+          outstanding_amount: number | null;
+          total_deposits: number | null;
+          total_sales: number | null;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       can_access_company: {

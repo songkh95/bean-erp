@@ -34,6 +34,13 @@ const initialForm: DriverInsert = {
   is_active: true,
 };
 
+function getDriverSaveErrorMessage(error: { code?: string; message?: string }) {
+  if (error.code === "23505") {
+    return "동일한 차량번호가 이미 존재합니다. (회사별 중복 또는 DB 제약 확인 필요)";
+  }
+  return error.message || "저장 중 오류가 발생했습니다.";
+}
+
 async function fetchDrivers() {
   const { data, error } = await supabase
     .from("delivery_drivers")
@@ -105,7 +112,7 @@ export function DriverManagement() {
       await queryClient.invalidateQueries({ queryKey: ["delivery-drivers"] });
     },
     onError: (error) => {
-      toast.error(error.message || "저장 중 오류가 발생했습니다.");
+      toast.error(getDriverSaveErrorMessage(error));
     },
   });
 

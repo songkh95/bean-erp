@@ -3,8 +3,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { DateRange } from "react-day-picker";
 
 import { Button } from "@/components/ui/button";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/lib/supabase/client";
@@ -100,11 +110,13 @@ async function fetchHandledProductsByCustomer(customerId: string) {
   return handledProducts;
 }
 
-async function fetchSalesByDate(supplyDate: string) {
+async function fetchSalesByRange(fromDate: string, toDate: string) {
   const { data, error } = await supabase
     .from("sales_daily")
     .select("id, customer_id, product_id, quantity, unit_price, total_amount, supply_date, remark, is_paid, delivery_status")
-    .eq("supply_date", supplyDate)
+    .gte("supply_date", fromDate)
+    .lte("supply_date", toDate)
+    .order("supply_date", { ascending: false })
     .order("created_at", { ascending: false });
   if (error) {
     throw error;
@@ -127,7 +139,18 @@ async function fetchCustomerPrice(customerId: string, productId: string) {
 
 export function DailySalesPage() {
   const queryClient = useQueryClient();
-  const [supplyDate, setSupplyDate] = useState(getToday());
+  const today = getToday();
+  const todayDate = new Date(today);
+
+  const [entryDate, setEntryDate] = useState(today);
+  const [rangeInput, setRangeInput] = useState<DateRange>({
+    from: todayDate,
+    to: todayDate,
+  });
+  const [rangeApplied, setRangeApplied] = useState<DateRange>({
+    from: todayDate,
+    to: todayDate,
+  });
 
   const customerInputRef = useRef<HTMLInputElement | null>(null);
   const productInputRef = useRef<HTMLInputElement | null>(null);
@@ -140,6 +163,10 @@ export function DailySalesPage() {
   const [quantityText, setQuantityText] = useState("");
   const [isCustomerOpen, setIsCustomerOpen] = useState(false);
   const [isProductOpen, setIsProductOpen] = useState(false);
+  const [editingRow, setEditingRow] = useState<SalesDailyRow | null>(null);
+  const [editQuantityText, setEditQuantityText] = useState("");
+  const [editUnitPriceText, setEditUnitPriceText] = useState("");
+  const [editRemark, setEditRemark] = useState("");
 
   const { data: customers = [] } = useQuery({
     queryKey: ["customers", "active", "sales-daily"],
@@ -156,10 +183,13 @@ export function DailySalesPage() {
     enabled: !!selectedCustomerId,
   });
 
+  const appliedFrom = (rangeApplied.from ?? todayDate).toISOString().slice(0, 10);
+  const appliedTo = (rangeApplied.to ?? rangeApplied.from ?? todayDate).toISOString().slice(0, 10);
+
   const { data: sales = [], isLoading: isSalesLoading } = useQuery({
-    queryKey: [SALES_QUERY_KEY, supplyDate],
-    queryFn: () => fetchSalesByDate(supplyDate),
-    enabled: !!supplyDate,
+    queryKey: [SALES_QUERY_KEY, appliedFrom, appliedTo],
+    queryFn: () => fetchSalesByRange(appliedFrom, appliedTo),
+    enabled: !!appliedFrom && !!appliedTo,
   });
 
   const { data: customerPrice } = useQuery({
@@ -237,7 +267,7 @@ export function DailySalesPage() {
       const { data: existingRow, error: existingRowError } = await supabase
         .from("sales_daily")
         .select("id, quantity, unit_price")
-        .eq("supply_date", supplyDate)
+        .eq("supply_date", entryDate)
         .eq("customer_id", selectedCustomerId)
         .eq("product_id", selectedProductId)
         .maybeSingle();
@@ -267,7 +297,7 @@ export function DailySalesPage() {
       }
 
       const payload: SalesDailyInsert = {
-        supply_date: supplyDate,
+        supply_date: entryDate,
         customer_id: selectedCustomerId,
         product_id: selectedProductId,
         quantity,
@@ -283,7 +313,7 @@ export function DailySalesPage() {
       }
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: [SALES_QUERY_KEY, supplyDate] });
+      await queryClient.invalidateQueries({ queryKey: [SALES_QUERY_KEY, appliedFrom, appliedTo] });
       toast("저장됨");
       resetForm();
       customerInputRef.current?.focus();
@@ -296,8 +326,7 @@ export function DailySalesPage() {
   const deleteMutation = useMutation({
     mutationFn: async (row: SalesDailyRow) => {
       if (row.delivery_status === "confirmed") {
-        toast.error("배송 확정된 내역은 삭제할 수 없습니다.");
-        return;
+        throw new Error("배송 확정된 내역은 삭제할 수 없습니다.");
       }
 
       const { data: latestRow, error: checkError } = await supabase
@@ -311,8 +340,7 @@ export function DailySalesPage() {
       }
 
       if (latestRow?.delivery_status === "confirmed") {
-        toast.error("배송 확정된 내역은 삭제할 수 없습니다.");
-        return;
+        throw new Error("배송 확정된 내역은 삭제할 수 없습니다.");
       }
 
       const { error } = await supabase.from("sales_daily").delete().eq("id", row.id);
@@ -321,10 +349,52 @@ export function DailySalesPage() {
       }
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: [SALES_QUERY_KEY, supplyDate] });
+      await queryClient.invalidateQueries({ queryKey: [SALES_QUERY_KEY, appliedFrom, appliedTo] });
     },
     onError: (error) => {
       toast.error(error.message || "삭제 중 오류가 발생했습니다.");
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingRow) {
+        return;
+      }
+      if (editingRow.delivery_status === "confirmed") {
+        throw new Error("배송 확정된 내역은 수정할 수 없습니다.");
+      }
+
+      const quantity = Number(editQuantityText || 0);
+      const unitPrice = Number(editUnitPriceText || 0);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new Error("수량을 올바르게 입력해 주세요.");
+      }
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+        throw new Error("단가를 올바르게 입력해 주세요.");
+      }
+
+      const { error } = await supabase
+        .from("sales_daily")
+        .update({
+          quantity,
+          unit_price: unitPrice,
+          total_amount: quantity * unitPrice,
+          remark: editRemark.trim() || null,
+        })
+        .eq("id", editingRow.id);
+
+      if (error) {
+        throw error;
+      }
+    },
+    onSuccess: async () => {
+      toast.success("수정되었습니다.");
+      setEditingRow(null);
+      await queryClient.invalidateQueries({ queryKey: [SALES_QUERY_KEY, appliedFrom, appliedTo] });
+    },
+    onError: (error) => {
+      toast.error(error.message || "수정 중 오류가 발생했습니다.");
     },
   });
 
@@ -384,12 +454,36 @@ export function DailySalesPage() {
     insertMutation.mutate();
   };
 
+  const applyRange = () => {
+    setRangeApplied({
+      from: rangeInput.from ?? todayDate,
+      to: rangeInput.to ?? rangeInput.from ?? todayDate,
+    });
+  };
+
+  const openEditDialog = (row: SalesDailyRow) => {
+    setEditingRow(row);
+    setEditQuantityText(String(row.quantity));
+    setEditUnitPriceText(String(row.unit_price));
+    setEditRemark(row.remark ?? "");
+  };
+
   return (
     <section className="space-y-4 rounded-lg border bg-white p-6">
-      <div className="flex items-end gap-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-2">
+          <p className="text-sm font-medium">조회 기간</p>
+          <DateRangePicker value={rangeInput} onChange={(next) => next && setRangeInput(next)} className="w-[300px]" />
+        </div>
+        <div className="space-y-2">
+          <p className="text-sm font-medium opacity-0">조회</p>
+          <Button type="button" onClick={applyRange}>
+            기간 조회
+          </Button>
+        </div>
         <div className="w-56 space-y-2">
-          <p className="text-sm font-medium">날짜</p>
-          <Input type="date" value={supplyDate} onChange={(event) => setSupplyDate(event.target.value)} />
+          <p className="text-sm font-medium">등록 일자</p>
+          <Input type="date" value={entryDate} onChange={(event) => setEntryDate(event.target.value)} />
         </div>
       </div>
 
@@ -480,7 +574,7 @@ export function DailySalesPage() {
       </div>
 
       <div className="rounded-md border">
-        <div className="border-b px-4 py-3 text-sm font-semibold">판매 내역</div>
+        <div className="border-b px-4 py-3 text-sm font-semibold">판매 내역 ({appliedFrom} ~ {appliedTo})</div>
         <div className="max-h-[480px] overflow-auto">
           <Table>
             <TableHeader>
@@ -491,21 +585,22 @@ export function DailySalesPage() {
                 <TableHead className="text-right">수량</TableHead>
                 <TableHead className="text-right">단가</TableHead>
                 <TableHead className="text-right">합계</TableHead>
+                <TableHead className="w-[96px]">수정</TableHead>
                 <TableHead className="w-[96px]">삭제</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isSalesLoading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-slate-500">
+                  <TableCell colSpan={8} className="py-8 text-center text-slate-500">
                     데이터를 불러오는 중입니다...
                   </TableCell>
                 </TableRow>
               )}
               {!isSalesLoading && sales.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-slate-500">
-                    해당 날짜의 판매 내역이 없습니다.
+                  <TableCell colSpan={8} className="py-8 text-center text-slate-500">
+                    해당 기간의 판매 내역이 없습니다.
                   </TableCell>
                 </TableRow>
               )}
@@ -529,6 +624,17 @@ export function DailySalesPage() {
                         type="button"
                         variant="outline"
                         size="sm"
+                        onClick={() => openEditDialog(row)}
+                        disabled={row.delivery_status === "confirmed"}
+                      >
+                        수정
+                      </Button>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
                         onClick={() => deleteMutation.mutate(row)}
                         disabled={deleteMutation.isPending || row.delivery_status === "confirmed"}
                       >
@@ -541,6 +647,42 @@ export function DailySalesPage() {
           </Table>
         </div>
       </div>
+
+      <Dialog open={!!editingRow} onOpenChange={(open) => !open && setEditingRow(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>판매 내역 수정</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-1">
+              <p className="text-xs text-slate-600">수량</p>
+              <Input
+                value={editQuantityText}
+                inputMode="numeric"
+                onChange={(event) => setEditQuantityText(event.target.value.replace(/[^\d]/g, ""))}
+              />
+            </div>
+            <div className="grid gap-1">
+              <p className="text-xs text-slate-600">단가</p>
+              <Input
+                value={editUnitPriceText}
+                inputMode="numeric"
+                onChange={(event) => setEditUnitPriceText(event.target.value.replace(/[^\d]/g, ""))}
+              />
+            </div>
+            <div className="grid gap-1">
+              <p className="text-xs text-slate-600">비고</p>
+              <Input value={editRemark} onChange={(event) => setEditRemark(event.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>취소</DialogClose>
+            <Button type="button" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
+              저장
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
