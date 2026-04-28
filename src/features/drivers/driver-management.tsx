@@ -82,6 +82,8 @@ export function DriverManagement() {
     }
     return map;
   }, [regions]);
+  const totalDrivers = drivers.length;
+  const activeDrivers = drivers.filter((driver) => driver.is_active).length;
 
   const upsertMutation = useMutation({
     mutationFn: async (payload: DriverInsert) => {
@@ -164,6 +166,9 @@ export function DriverManagement() {
         <div>
           <h2 className="text-xl font-bold">배송기사 관리</h2>
           <p className="text-sm text-slate-600">기사와 차량, 담당 지역을 등록하고 수정합니다.</p>
+          <p className="mt-1 text-sm font-medium text-slate-700">
+            총 기사 수: {totalDrivers.toLocaleString()} (사용: {activeDrivers.toLocaleString()})
+          </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <Button onClick={openCreateDialog}>신규 기사 등록</Button>

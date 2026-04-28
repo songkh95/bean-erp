@@ -79,12 +79,17 @@ export function ProductCustomerManagement() {
     }
     return map;
   }, [customerNameById, customerPrices]);
+  const totalProducts = products.length;
+  const totalMajorCustomerLinks = customerPrices.filter((row) => row.product_id && row.customer_id && row.is_active).length;
 
   return (
     <section className="space-y-4 rounded-lg border bg-white p-6">
       <div>
         <h2 className="text-xl font-bold">품목별 주요거래처</h2>
         <p className="text-sm text-slate-600">취급(is_active=true) 거래처를 품목별로 확인합니다.</p>
+        <p className="mt-1 text-sm font-medium text-slate-700">
+          전체 품목 수: {totalProducts.toLocaleString()} / 주요거래처 연결 수: {totalMajorCustomerLinks.toLocaleString()}
+        </p>
       </div>
       <Table>
         <TableHeader>

@@ -151,6 +151,8 @@ export function PriceManagement() {
   };
 
   const selectedCustomer = customers?.find((customer) => customer.id === selectedCustomerId) ?? null;
+  const totalCustomers = customers?.length ?? 0;
+  const totalProducts = products.length;
 
   return (
     <section className="space-y-4 rounded-lg border bg-white p-6">
@@ -158,6 +160,9 @@ export function PriceManagement() {
         <div>
           <h2 className="text-xl font-bold">단가 관리</h2>
           <p className="text-sm text-slate-600">거래처별 품목 단가를 빠르게 입력하고 저장합니다. (사용/미사용 품목 모두 표시)</p>
+          <p className="mt-1 text-sm font-medium text-slate-700">
+            총 거래처 수: {totalCustomers.toLocaleString()} / 전체 품목 수: {totalProducts.toLocaleString()}
+          </p>
         </div>
         <Button onClick={() => saveMutation.mutate()} disabled={!selectedCustomerId || saveMutation.isPending}>
           단가 일괄 저장

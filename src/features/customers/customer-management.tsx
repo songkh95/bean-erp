@@ -28,16 +28,29 @@ type CustomerUpdate = TablesUpdate<"customers">;
 type RegionRow = Tables<"regions">;
 type RegionInsert = TablesInsert<"regions">;
 
-const customerFields = ["code", "name", "ceo_name", "phone", "address", "region_name", "tax_type", "submit"] as const;
+const customerFields = [
+  "code",
+  "name",
+  "business_number",
+  "ceo_name",
+  "phone",
+  "address",
+  "region_name",
+  "tax_type",
+  "note",
+  "submit",
+] as const;
 
 const initialForm: CustomerInsert = {
   code: "",
   name: "",
+  business_number: "",
   ceo_name: "",
   phone: "",
   address: "",
   region_id: null,
   tax_type: "",
+  note: "",
   is_active: true,
 };
 
@@ -51,7 +64,7 @@ function getCustomerSaveErrorMessage(error: { code?: string; message?: string })
 async function fetchCustomers() {
   const { data, error } = await supabase
     .from("customers")
-    .select("id, code, name, ceo_name, phone, address, region_id, tax_type, is_active, updated_at")
+    .select("id, code, name, business_number, ceo_name, phone, address, region_id, tax_type, note, is_active, updated_at")
     .order("code", { ascending: true });
 
   if (error) {
@@ -113,6 +126,8 @@ export function CustomerManagement() {
     }
     return (regions ?? []).find((region) => region.code.toLowerCase() === keyword) ?? null;
   }, [regionInput, regions]);
+  const totalCustomers = customers?.length ?? 0;
+  const activeCustomers = customers?.filter((customer) => customer.is_active).length ?? 0;
 
   const saveCustomerMutation = useMutation({
     mutationFn: async (payload: CustomerInsert) => {
@@ -156,11 +171,13 @@ export function CustomerManagement() {
         const updatePayload: CustomerUpdate = {
           code: payload.code,
           name: payload.name,
+          business_number: payload.business_number,
           ceo_name: payload.ceo_name,
           phone: payload.phone,
           address: payload.address,
           region_id: resolvedRegionId,
           tax_type: payload.tax_type,
+          note: payload.note,
           is_active: payload.is_active,
         };
         const { error: updateError } = await supabase.from("customers").update(updatePayload).eq("id", editingId);
@@ -199,11 +216,27 @@ export function CustomerManagement() {
     mutationFn: async (customerId: string) => {
       const { error } = await supabase.from("customers").delete().eq("id", customerId);
       if (error) {
+        // 연결된 판매/단가/정산 데이터가 있으면 FK로 삭제가 막히므로 미사용 처리로 전환
+        if (error.code === "23503") {
+          const { error: deactivateError } = await supabase
+            .from("customers")
+            .update({ is_active: false })
+            .eq("id", customerId);
+          if (deactivateError) {
+            throw deactivateError;
+          }
+          return { mode: "deactivated" as const };
+        }
         throw error;
       }
+      return { mode: "deleted" as const };
     },
-    onSuccess: async () => {
-      toast.success("거래처가 삭제되었습니다.");
+    onSuccess: async (result) => {
+      if (result?.mode === "deactivated") {
+        toast.success("연결된 데이터가 있어 삭제 대신 미사용 처리했습니다.");
+      } else {
+        toast.success("거래처가 삭제되었습니다.");
+      }
       await queryClient.invalidateQueries({ queryKey: ["customers"] });
       await queryClient.invalidateQueries({ queryKey: ["prices", "editor"] });
     },
@@ -225,11 +258,13 @@ export function CustomerManagement() {
     setForm({
       code: customer.code,
       name: customer.name,
+      business_number: customer.business_number ?? "",
       ceo_name: customer.ceo_name ?? "",
       phone: customer.phone ?? "",
       address: customer.address ?? "",
       region_id: customer.region_id,
       tax_type: customer.tax_type ?? "",
+      note: customer.note ?? "",
       is_active: customer.is_active ?? true,
     });
     const currentRegionCode = customer.region_id ? (regionById.get(customer.region_id)?.code ?? "") : "";
@@ -265,6 +300,9 @@ export function CustomerManagement() {
         <div>
           <h2 className="text-xl font-bold">거래처 관리</h2>
           <p className="text-sm text-slate-600">거래처 기본 정보를 등록하고 관리합니다.</p>
+          <p className="mt-1 text-sm font-medium text-slate-700">
+            총 거래처 수: {totalCustomers.toLocaleString()} (사용: {activeCustomers.toLocaleString()})
+          </p>
         </div>
         <Dialog
           open={open}
@@ -319,6 +357,18 @@ export function CustomerManagement() {
                   }}
                   onChange={(e) => setForm((prev) => ({ ...prev, ceo_name: e.target.value }))}
                   onKeyDown={(e) => handleEnter(e, "ceo_name")}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="customer-business-number">사업자등록번호</Label>
+                <Input
+                  id="customer-business-number"
+                  value={form.business_number ?? ""}
+                  ref={(el) => {
+                    refs.current.business_number = el;
+                  }}
+                  onChange={(e) => setForm((prev) => ({ ...prev, business_number: e.target.value }))}
+                  onKeyDown={(e) => handleEnter(e, "business_number")}
                 />
               </div>
               <div className="grid gap-2">
@@ -414,6 +464,18 @@ export function CustomerManagement() {
                   onKeyDown={(e) => handleEnter(e, "tax_type")}
                 />
               </div>
+              <div className="grid gap-2">
+                <Label htmlFor="customer-note">비고</Label>
+                <Input
+                  id="customer-note"
+                  value={form.note ?? ""}
+                  ref={(el) => {
+                    refs.current.note = el;
+                  }}
+                  onChange={(e) => setForm((prev) => ({ ...prev, note: e.target.value }))}
+                  onKeyDown={(e) => handleEnter(e, "note")}
+                />
+              </div>
               <div className="flex items-center justify-between rounded-md border p-3">
                 <Label htmlFor="customer-active">사용 여부</Label>
                 <Switch
@@ -446,11 +508,13 @@ export function CustomerManagement() {
           <TableRow>
             <TableHead>코드</TableHead>
             <TableHead>거래처명</TableHead>
+            <TableHead>사업자번호</TableHead>
             <TableHead>대표자</TableHead>
             <TableHead>전화번호</TableHead>
             <TableHead>주소</TableHead>
             <TableHead>지역코드</TableHead>
             <TableHead>과세구분</TableHead>
+            <TableHead>비고</TableHead>
             <TableHead>사용여부</TableHead>
             <TableHead className="w-24">수정</TableHead>
             <TableHead className="w-24">삭제</TableHead>
@@ -459,14 +523,14 @@ export function CustomerManagement() {
         <TableBody>
           {isLoading && (
             <TableRow>
-              <TableCell colSpan={10} className="py-8 text-center text-slate-500">
+              <TableCell colSpan={12} className="py-8 text-center text-slate-500">
                 데이터를 불러오는 중입니다...
               </TableCell>
             </TableRow>
           )}
           {!isLoading && (customers?.length ?? 0) === 0 && (
             <TableRow>
-              <TableCell colSpan={10} className="py-8 text-center text-slate-500">
+              <TableCell colSpan={12} className="py-8 text-center text-slate-500">
                 등록된 거래처가 없습니다.
               </TableCell>
             </TableRow>
@@ -479,11 +543,13 @@ export function CustomerManagement() {
             >
               <TableCell>{customer.code}</TableCell>
               <TableCell>{customer.name}</TableCell>
+              <TableCell>{customer.business_number ?? "-"}</TableCell>
               <TableCell>{customer.ceo_name ?? "-"}</TableCell>
               <TableCell>{customer.phone ?? "-"}</TableCell>
               <TableCell>{customer.address ?? "-"}</TableCell>
               <TableCell>{customer.region_id ? (regionById.get(customer.region_id)?.code ?? "-") : "-"}</TableCell>
               <TableCell>{customer.tax_type ?? "-"}</TableCell>
+              <TableCell>{customer.note ?? "-"}</TableCell>
               <TableCell>{customer.is_active ? "사용" : "미사용"}</TableCell>
               <TableCell onClick={(event) => event.stopPropagation()}>
                 <Button variant="outline" size="sm" onClick={() => openEditDialog(customer)}>

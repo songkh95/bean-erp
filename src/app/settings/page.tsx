@@ -34,11 +34,12 @@ type CompanyFormState = {
   ceo_name: string;
   phone: string;
   address: string;
+  bank_accounts: { bank_name: string; account_number: string; account_holder: string }[];
 };
 
 function toFormState(data: CompanyProfileQueryData | null | undefined): CompanyFormState {
   if (!data) {
-    return { name: "", business_number: "", ceo_name: "", phone: "", address: "" };
+    return { name: "", business_number: "", ceo_name: "", phone: "", address: "", bank_accounts: [] };
   }
   return {
     name: data.name ?? "",
@@ -46,6 +47,7 @@ function toFormState(data: CompanyProfileQueryData | null | undefined): CompanyF
     ceo_name: data.ceo_name ?? "",
     phone: data.phone ?? "",
     address: data.address ?? "",
+    bank_accounts: data.bank_accounts ?? [],
   };
 }
 
@@ -81,6 +83,13 @@ export default function SettingsPage() {
         ceo_name: companyForm.ceo_name.trim() || null,
         phone: companyForm.phone.trim() || null,
         address: companyForm.address.trim() || null,
+        bank_accounts: companyForm.bank_accounts
+          .map((account) => ({
+            bank_name: account.bank_name.trim(),
+            account_number: account.account_number.trim(),
+            account_holder: account.account_holder.trim(),
+          }))
+          .filter((account) => account.bank_name || account.account_number || account.account_holder),
       };
       const { error: upError } = await supabase.from("companies").update(payload).eq("id", data.companyId);
       if (upError) throw new Error(upError.message);
@@ -131,6 +140,31 @@ export default function SettingsPage() {
       return;
     }
     updatePassword.mutate(newPassword);
+  }
+
+  function addBankAccount() {
+    setCompanyForm((prev) => ({
+      ...prev,
+      bank_accounts: [...prev.bank_accounts, { bank_name: "", account_number: "", account_holder: "" }],
+    }));
+  }
+
+  function removeBankAccount(index: number) {
+    setCompanyForm((prev) => ({
+      ...prev,
+      bank_accounts: prev.bank_accounts.filter((_, idx) => idx !== index),
+    }));
+  }
+
+  function updateBankAccount(
+    index: number,
+    field: "bank_name" | "account_number" | "account_holder",
+    value: string,
+  ) {
+    setCompanyForm((prev) => ({
+      ...prev,
+      bank_accounts: prev.bank_accounts.map((account, idx) => (idx === index ? { ...account, [field]: value } : account)),
+    }));
   }
 
   if (isLoading) {
@@ -235,6 +269,42 @@ export default function SettingsPage() {
                     onKeyDown={onCompanyKeyDown}
                     autoComplete="street-address"
                   />
+                </div>
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="flex items-center justify-between">
+                    <Label>입금 계좌</Label>
+                    <Button type="button" variant="outline" onClick={addBankAccount}>
+                      + 계좌 추가
+                    </Button>
+                  </div>
+                  {companyForm.bank_accounts.length === 0 && (
+                    <p className="text-xs text-slate-500">등록된 계좌가 없습니다. 첫 번째 계좌가 거래명세서에 우선 표시됩니다.</p>
+                  )}
+                  {companyForm.bank_accounts.map((account, index) => (
+                    <div key={`account-${index}`} className="grid gap-2 rounded-md border p-3">
+                      <p className="text-xs font-medium text-slate-600">계좌 {index + 1}</p>
+                      <Input
+                        value={account.bank_name}
+                        onChange={(e) => updateBankAccount(index, "bank_name", e.target.value)}
+                        placeholder="은행명"
+                      />
+                      <Input
+                        value={account.account_number}
+                        onChange={(e) => updateBankAccount(index, "account_number", e.target.value)}
+                        placeholder="계좌번호"
+                      />
+                      <Input
+                        value={account.account_holder}
+                        onChange={(e) => updateBankAccount(index, "account_holder", e.target.value)}
+                        placeholder="예금주"
+                      />
+                      <div className="flex justify-end">
+                        <Button type="button" variant="ghost" onClick={() => removeBankAccount(index)}>
+                          삭제
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
                 <Button type="submit" disabled={updateCompany.isPending}>
                   {updateCompany.isPending ? "저장 중…" : "저장"}

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { companyProfileQueryKey, fetchCompanyProfileForUser } from "@/lib/queries/company-profile";
 import { supabase } from "@/lib/supabase/client";
 import type { Tables } from "@/types/database.types";
 
@@ -35,7 +36,7 @@ function getMonthStart() {
 async function fetchCustomers() {
   const { data, error } = await supabase
     .from("customers")
-    .select("id, code, name")
+    .select("id, code, name, ceo_name, business_number, phone, address, note")
     .order("name", { ascending: true });
   if (error) {
     throw error;
@@ -57,7 +58,7 @@ async function fetchProducts() {
 async function fetchInvoiceSales(startDate: string, endDate: string, customerId: string | null) {
   let query = supabase
     .from("sales_daily")
-    .select("id, supply_date, customer_id, product_id, quantity, unit_price, total_amount")
+    .select("id, supply_date, customer_id, product_id, quantity, unit_price, total_amount, remark")
     .gte("supply_date", startDate)
     .lte("supply_date", endDate)
     .order("supply_date", { ascending: true });
@@ -71,6 +72,22 @@ async function fetchInvoiceSales(startDate: string, endDate: string, customerId:
     throw error;
   }
   return (data ?? []) as SalesRow[];
+}
+
+function formatBusinessNumber(value: string | null | undefined) {
+  const raw = (value ?? "").replace(/[^\d]/g, "");
+  if (raw.length !== 10) {
+    return value ?? "-";
+  }
+  return `${raw.slice(0, 3)}-${raw.slice(3, 5)}-${raw.slice(5)}`;
+}
+
+function getInvoiceTitle(dateString: string) {
+  const [year, month] = dateString.split("-");
+  if (!year || !month) {
+    return "거래명세서";
+  }
+  return `${Number(year)}년 ${Number(month)}월 거래명세서`;
 }
 
 export function InvoicePage() {
@@ -101,6 +118,10 @@ export function InvoicePage() {
     queryFn: () => fetchInvoiceSales(appliedStartDate, appliedEndDate, appliedCustomerId),
     enabled: !!appliedStartDate && !!appliedEndDate,
   });
+  const { data: companyProfile } = useQuery({
+    queryKey: companyProfileQueryKey,
+    queryFn: fetchCompanyProfileForUser,
+  });
 
   const filteredCustomers = useMemo(() => {
     const q = customerKeyword.trim().toLowerCase();
@@ -108,11 +129,13 @@ export function InvoicePage() {
       id: "all",
       code: "ALL",
       name: "전체",
+      business_number: null,
       company_id: null,
       address: null,
       ceo_name: null,
       created_at: null,
       is_active: null,
+      note: null,
       phone: null,
       region_id: null,
       tax_type: null,
@@ -151,6 +174,17 @@ export function InvoicePage() {
     [selectedSales],
   );
   const allSelected = sales.length > 0 && selectedSales.length === sales.length;
+  const selectedCustomerForPrint = useMemo(() => {
+    if (appliedCustomerId) {
+      return customers.find((customer) => customer.id === appliedCustomerId) ?? null;
+    }
+    const firstCustomerId = selectedSales.find((row) => !!row.customer_id)?.customer_id;
+    if (!firstCustomerId) {
+      return null;
+    }
+    return customers.find((customer) => customer.id === firstCustomerId) ?? null;
+  }, [appliedCustomerId, customers, selectedSales]);
+  const bankAccount = companyProfile?.bank_accounts?.[0] ?? null;
 
   const applyFilters = () => {
     setAppliedStartDate(startDateInput);
@@ -278,16 +312,41 @@ export function InvoicePage() {
       </div>
 
       <div className="invoice-print-header hidden">
-        <h1 className="text-2xl font-bold">거래명세서</h1>
-        <p className="mt-1 text-sm">
-          조회기간: {appliedStartDate} ~ {appliedEndDate}
-        </p>
-        <div className="mt-3 text-sm">
-          <p className="font-semibold">공급자: 장흥식품</p>
-          <p>대표: 장흥식</p>
-          <p>사업장: 전라남도 장흥군 (예시)</p>
-          <p>연락처: 010-0000-0000</p>
-        </div>
+        <h1 className="text-center text-3xl font-bold tracking-tight">{getInvoiceTitle(appliedStartDate)}</h1>
+        <table className="invoice-print-meta-table mt-3">
+          <tbody>
+            <tr>
+              <th>구분</th>
+              <th>공급자 (공장)</th>
+              <th>공급받는 자</th>
+            </tr>
+            <tr>
+              <th>상호명</th>
+              <td>{companyProfile?.name ?? "-"}</td>
+              <td>{selectedCustomerForPrint?.name ?? "전체 거래처"}</td>
+            </tr>
+            <tr>
+              <th>대표자</th>
+              <td>{companyProfile?.ceo_name ?? "-"}</td>
+              <td>{selectedCustomerForPrint?.ceo_name ?? "-"}</td>
+            </tr>
+            <tr>
+              <th>사업자번호</th>
+              <td>{formatBusinessNumber(companyProfile?.business_number)}</td>
+              <td>{formatBusinessNumber(selectedCustomerForPrint?.business_number)}</td>
+            </tr>
+            <tr>
+              <th>연락처</th>
+              <td>{companyProfile?.phone ?? "-"}</td>
+              <td>{selectedCustomerForPrint?.phone ?? "-"}</td>
+            </tr>
+            <tr>
+              <th>주소</th>
+              <td>{companyProfile?.address ?? "-"}</td>
+              <td>{selectedCustomerForPrint?.address ?? "-"}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <div className="rounded-md border invoice-table-wrap">
@@ -308,20 +367,21 @@ export function InvoicePage() {
                 <TableHead className="text-right">수량</TableHead>
                 <TableHead className="text-right">단가</TableHead>
                 <TableHead className="text-right">공급가액</TableHead>
+                <TableHead>비고</TableHead>
                 <TableHead className="w-[96px]">삭제</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isSalesLoading && (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-8 text-center text-slate-500">
+                  <TableCell colSpan={10} className="py-8 text-center text-slate-500">
                     데이터를 불러오는 중입니다...
                   </TableCell>
                 </TableRow>
               )}
               {!isSalesLoading && sales.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-8 text-center text-slate-500">
+                  <TableCell colSpan={10} className="py-8 text-center text-slate-500">
                     조회된 내역이 없습니다.
                   </TableCell>
                 </TableRow>
@@ -342,6 +402,7 @@ export function InvoicePage() {
                       <TableCell className="text-right">{row.quantity.toLocaleString()}</TableCell>
                       <TableCell className="text-right">{row.unit_price.toLocaleString()}</TableCell>
                       <TableCell className="text-right">{row.total_amount.toLocaleString()}</TableCell>
+                      <TableCell>{row.remark ?? "-"}</TableCell>
                       <TableCell>
                         <Button
                           type="button"
@@ -364,12 +425,14 @@ export function InvoicePage() {
                 })}
               {!isSalesLoading && sales.length > 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-right font-bold">
+                  <TableCell colSpan={5} className="text-right font-bold">
                     합계
                   </TableCell>
                   <TableCell className="text-right font-bold">{selectedTotalQuantity.toLocaleString()}</TableCell>
                   <TableCell className="text-right font-bold">-</TableCell>
                   <TableCell className="text-right font-bold">{selectedTotalAmount.toLocaleString()}</TableCell>
+                  <TableCell />
+                  <TableCell />
                 </TableRow>
               )}
             </TableBody>
@@ -378,46 +441,52 @@ export function InvoicePage() {
       </div>
 
       <div className="invoice-print-selected hidden rounded-md border">
-        <div className="border-b px-4 py-3 text-sm font-semibold">선택 인쇄 내역 ({selectedSales.length}건)</div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>일자</TableHead>
-              <TableHead>거래처</TableHead>
-              <TableHead>품목명</TableHead>
-              <TableHead>규격</TableHead>
-              <TableHead className="text-right">수량</TableHead>
-              <TableHead className="text-right">단가</TableHead>
-              <TableHead className="text-right">공급가액</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <table className="invoice-print-detail-table">
+          <thead>
+            <tr>
+              <th>공급일자</th>
+              <th>품목명</th>
+              <th>수량</th>
+              <th>단가</th>
+              <th>공급가액</th>
+              <th>비고</th>
+            </tr>
+          </thead>
+          <tbody>
             {selectedSales.map((row) => {
               const product = row.product_id ? productById.get(row.product_id) : null;
               return (
-                <TableRow key={`print-${row.id}`}>
-                  <TableCell>{row.supply_date}</TableCell>
-                  <TableCell>{row.customer_id ? customerNameById.get(row.customer_id) ?? "-" : "-"}</TableCell>
-                  <TableCell>{product?.name ?? "-"}</TableCell>
-                  <TableCell>{product?.specification ?? "-"}</TableCell>
-                  <TableCell className="text-right">{row.quantity.toLocaleString()}</TableCell>
-                  <TableCell className="text-right">{row.unit_price.toLocaleString()}</TableCell>
-                  <TableCell className="text-right">{row.total_amount.toLocaleString()}</TableCell>
-                </TableRow>
+                <tr key={`print-${row.id}`}>
+                  <td>{row.supply_date}</td>
+                  <td>{[product?.name, product?.specification].filter(Boolean).join(" ") || "-"}</td>
+                  <td className="text-center">{row.quantity.toLocaleString()}</td>
+                  <td className="text-right">{row.unit_price.toLocaleString()}</td>
+                  <td className="text-right">{row.total_amount.toLocaleString()}</td>
+                  <td>{row.remark ?? "-"}</td>
+                </tr>
               );
             })}
             {selectedSales.length > 0 && (
-              <TableRow>
-                <TableCell colSpan={4} className="text-right font-bold">
+              <tr>
+                <td colSpan={2} className="text-center font-bold">
                   합계
-                </TableCell>
-                <TableCell className="text-right font-bold">{selectedTotalQuantity.toLocaleString()}</TableCell>
-                <TableCell className="text-right font-bold">-</TableCell>
-                <TableCell className="text-right font-bold">{selectedTotalAmount.toLocaleString()}</TableCell>
-              </TableRow>
+                </td>
+                <td className="text-center font-bold">{selectedTotalQuantity.toLocaleString()}</td>
+                <td />
+                <td className="text-right font-bold">{selectedTotalAmount.toLocaleString()}</td>
+                <td />
+              </tr>
             )}
-          </TableBody>
-        </Table>
+            <tr>
+              <th>입금계좌</th>
+              <td colSpan={5}>
+                {bankAccount
+                  ? `${bankAccount.bank_name} ${bankAccount.account_number} / ${bankAccount.account_holder}`
+                  : "내 설정에서 입금계좌를 등록해 주세요."}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <style jsx global>{`
@@ -451,8 +520,24 @@ export function InvoicePage() {
             display: block !important;
             margin-bottom: 16px;
           }
-          table {
+          .invoice-print-meta-table,
+          .invoice-print-detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
             font-size: 12px;
+          }
+          .invoice-print-meta-table th,
+          .invoice-print-meta-table td,
+          .invoice-print-detail-table th,
+          .invoice-print-detail-table td {
+            border: 1px solid #444;
+            padding: 4px 6px;
+            vertical-align: middle;
+          }
+          .invoice-print-meta-table th {
+            background: #f3f4f6;
+            text-align: center;
           }
         }
       `}</style>

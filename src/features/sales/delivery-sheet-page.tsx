@@ -265,6 +265,9 @@ export function DeliverySheetPage() {
         <div>
           <h2 className="text-xl font-bold">배송지시서 출력</h2>
           <p className="text-sm text-slate-600">출고 포함 항목만 기사별 배송지시서로 인쇄합니다.</p>
+          <p className="mt-1 text-sm font-medium text-slate-700">
+            조회 건수: {filteredRowsByDriver.length.toLocaleString()} / 출고 포함: {onRows.length.toLocaleString()}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" onClick={() => setConfirmOpen(true)} disabled={!selectedDriver || onRows.length === 0}>

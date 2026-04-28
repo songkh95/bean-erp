@@ -66,6 +66,8 @@ export function ProductManagement() {
     queryKey: ["products"],
     queryFn: fetchProducts,
   });
+  const totalProducts = products?.length ?? 0;
+  const activeProducts = products?.filter((product) => product.is_active).length ?? 0;
 
   const upsertMutation = useMutation({
     mutationFn: async (payload: ProductInsert) => {
@@ -162,6 +164,9 @@ export function ProductManagement() {
         <div>
           <h2 className="text-xl font-bold">품목 관리</h2>
           <p className="text-sm text-slate-600">품목 기본 정보를 등록하고 수정합니다.</p>
+          <p className="mt-1 text-sm font-medium text-slate-700">
+            전체 품목 수: {totalProducts.toLocaleString()} (사용: {activeProducts.toLocaleString()})
+          </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <Button onClick={openCreateDialog}>신규 품목 등록</Button>

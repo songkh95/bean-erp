@@ -17,6 +17,7 @@ export type Database = {
       companies: {
         Row: {
           address: string | null;
+          bank_accounts: Json;
           business_number: string | null;
           ceo_name: string | null;
           created_at: string;
@@ -26,6 +27,7 @@ export type Database = {
         };
         Insert: {
           address?: string | null;
+          bank_accounts?: Json;
           business_number?: string | null;
           ceo_name?: string | null;
           created_at?: string;
@@ -35,6 +37,7 @@ export type Database = {
         };
         Update: {
           address?: string | null;
+          bank_accounts?: Json;
           business_number?: string | null;
           ceo_name?: string | null;
           created_at?: string;
@@ -134,6 +137,7 @@ export type Database = {
       customers: {
         Row: {
           address: string | null;
+          business_number: string | null;
           ceo_name: string | null;
           code: string;
           company_id: string | null;
@@ -141,6 +145,7 @@ export type Database = {
           id: string;
           is_active: boolean | null;
           name: string;
+          note: string | null;
           phone: string | null;
           region_id: string | null;
           tax_type: string | null;
@@ -148,6 +153,7 @@ export type Database = {
         };
         Insert: {
           address?: string | null;
+          business_number?: string | null;
           ceo_name?: string | null;
           code: string;
           company_id?: string | null;
@@ -155,6 +161,7 @@ export type Database = {
           id?: string;
           is_active?: boolean | null;
           name: string;
+          note?: string | null;
           phone?: string | null;
           region_id?: string | null;
           tax_type?: string | null;
@@ -162,6 +169,7 @@ export type Database = {
         };
         Update: {
           address?: string | null;
+          business_number?: string | null;
           ceo_name?: string | null;
           code?: string;
           company_id?: string | null;
@@ -169,6 +177,7 @@ export type Database = {
           id?: string;
           is_active?: boolean | null;
           name?: string;
+          note?: string | null;
           phone?: string | null;
           region_id?: string | null;
           tax_type?: string | null;

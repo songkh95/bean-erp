@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardList, FileText, Home, LogOut, Package, Settings, Tags, Truck, Users } from "lucide-react";
+import { ClipboardList, FileText, Home, LogOut, Package, PanelLeftClose, PanelLeftOpen, Settings, Tags, Truck, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -24,10 +24,16 @@ const menuItems = [
   { href: "/settlement/invoice", label: "정산 관리", icon: FileText, matchPrefix: "/settlement" },
   { href: "/settlement/invoice", label: "└ 거래명세서", icon: FileText, isChild: true },
   { href: "/settlement/deposits", label: "└ 입금 등록", icon: FileText, isChild: true },
-  { href: "/settlement/balances", label: "└ 미수금 현황", icon: FileText, isChild: true },
+  { href: "/settlement/daily-deposits", label: "└ 수금일보", icon: FileText, isChild: true },
+  { href: "/settlement/balances", label: "└ 외상잔액 명세", icon: FileText, isChild: true },
 ];
 
-export function SidebarNav() {
+type SidebarNavProps = {
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+};
+
+export function SidebarNav({ isCollapsed, onToggleCollapse }: SidebarNavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string>("로그인 사용자");
@@ -98,11 +104,20 @@ export function SidebarNav() {
   }
 
   return (
-    <aside className="flex w-64 flex-col justify-between border-r border-slate-200 bg-white">
+    <aside className={cn("flex flex-col justify-between border-r border-slate-200 bg-white transition-all", isCollapsed ? "w-20" : "w-64")}>
       <div>
-        <div className="border-b border-slate-200 px-5 py-4">
-          <h1 className="line-clamp-2 text-base font-bold leading-snug text-slate-900">{headerTitle}</h1>
-          <p className="mt-1 text-xs text-slate-500">기준정보 관리</p>
+        <div className={cn("border-b border-slate-200 py-4", isCollapsed ? "px-2" : "px-5")}>
+          <div className={cn("flex items-start", isCollapsed ? "justify-center" : "justify-between gap-2")}>
+            {!isCollapsed && (
+              <div>
+                <h1 className="line-clamp-2 text-base font-bold leading-snug text-slate-900">{headerTitle}</h1>
+                <p className="mt-1 text-xs text-slate-500">기준정보 관리</p>
+              </div>
+            )}
+            <Button type="button" variant="ghost" size="icon" onClick={onToggleCollapse} aria-label="사이드바 토글">
+              {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
         <nav className="space-y-1 p-3">
           {menuItems.map(({ href, icon: Icon, label, isChild, matchPrefix }) => {
@@ -115,38 +130,44 @@ export function SidebarNav() {
                 href={href}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100",
+                  isCollapsed && "justify-center px-2",
                   isChild && "ml-4 py-1.5 text-xs",
+                  isCollapsed && isChild && "ml-0",
                   isActive && "bg-slate-900 text-white hover:bg-slate-900",
                 )}
+                title={label.replace("└ ", "")}
               >
                 <Icon className="h-4 w-4" />
-                <span>{label}</span>
+                {!isCollapsed && <span>{label}</span>}
               </Link>
             );
           })}
         </nav>
       </div>
-      <div className="border-t border-slate-200 p-3">
-        <p className="truncate px-1 text-xs text-slate-500">{userEmail}</p>
+      <div className={cn("border-t border-slate-200 p-3", isCollapsed && "px-2")}>
+        {!isCollapsed && <p className="truncate px-1 text-xs text-slate-500">{userEmail}</p>}
         <Link
           href="/settings"
           className={cn(
             "mt-1 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100",
+            isCollapsed && "justify-center px-2",
             pathname === "/settings" && "bg-slate-900 text-white hover:bg-slate-900",
           )}
+          title="내 설정"
         >
           <Settings className="h-4 w-4" />
-          내 설정
+          {!isCollapsed && "내 설정"}
         </Link>
         <Button
           type="button"
           variant="ghost"
-          className="mt-1 w-full justify-start text-slate-700"
+          className={cn("mt-1 w-full text-slate-700", isCollapsed ? "justify-center px-2" : "justify-start")}
           onClick={handleSignOut}
           disabled={isSigningOut}
+          title={isSigningOut ? "로그아웃 중..." : "로그아웃"}
         >
           <LogOut className="h-4 w-4" />
-          {isSigningOut ? "로그아웃 중..." : "로그아웃"}
+          {!isCollapsed && (isSigningOut ? "로그아웃 중..." : "로그아웃")}
         </Button>
       </div>
     </aside>

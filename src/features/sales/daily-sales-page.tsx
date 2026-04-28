@@ -142,7 +142,6 @@ export function DailySalesPage() {
   const today = getToday();
   const todayDate = new Date(today);
 
-  const [entryDate, setEntryDate] = useState(today);
   const [rangeInput, setRangeInput] = useState<DateRange>({
     from: todayDate,
     to: todayDate,
@@ -225,7 +224,9 @@ export function DailySalesPage() {
 
   const unitPrice = customerPrice?.price ?? handledProducts.find((item) => item.product.id === selectedProductId)?.price ?? 0;
   const quantityNumber = Number(quantityText || 0);
+  const canAdd = !!selectedCustomerId && !!selectedProductId && Number.isFinite(quantityNumber) && quantityNumber > 0;
   const totalAmount = unitPrice * quantityNumber;
+  const entryDate = (rangeInput.from ?? todayDate).toISOString().slice(0, 10);
 
   const customerNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -451,7 +452,9 @@ export function DailySalesPage() {
       return;
     }
     event.preventDefault();
-    insertMutation.mutate();
+    if (canAdd) {
+      insertMutation.mutate();
+    }
   };
 
   const applyRange = () => {
@@ -480,10 +483,6 @@ export function DailySalesPage() {
           <Button type="button" onClick={applyRange}>
             기간 조회
           </Button>
-        </div>
-        <div className="w-56 space-y-2">
-          <p className="text-sm font-medium">등록 일자</p>
-          <Input type="date" value={entryDate} onChange={(event) => setEntryDate(event.target.value)} />
         </div>
       </div>
 
@@ -565,7 +564,7 @@ export function DailySalesPage() {
             <Button
               type="button"
               onClick={() => insertMutation.mutate()}
-              disabled={insertMutation.isPending}
+              disabled={insertMutation.isPending || !canAdd}
             >
               추가
             </Button>
