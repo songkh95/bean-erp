@@ -13,6 +13,7 @@ import { PriceTablePanel } from "./price-table-panel";
 import type { CustomerRow, ProductRow } from "./types";
 
 type CustomerPriceInsert = TablesInsert<"customer_prices">;
+type CustomerPriceHistoryInsert = TablesInsert<"customer_price_history">;
 type CustomerPriceEditorRow = Pick<
   Tables<"customer_prices">,
   "id" | "customer_id" | "product_id" | "price" | "is_active"
@@ -125,6 +126,35 @@ export function PriceManagement() {
 
       if (error) {
         throw error;
+      }
+
+      const changedHistoryRows: CustomerPriceHistoryInsert[] = [];
+      const effectiveFrom = new Date().toISOString().slice(0, 10);
+      for (const product of products) {
+        const isActive = activeDrafts[product.id] ?? false;
+        const rawValue = (priceDrafts[product.id] ?? "").trim();
+        const fallbackPrice = Number(priceMap.get(product.id)?.price ?? 0);
+        const parsed = Number(rawValue);
+        const nextPrice = isActive ? (Number.isFinite(parsed) ? parsed : fallbackPrice) : 0;
+        const current = priceMap.get(product.id);
+        const currentPrice = Number(current?.price ?? 0);
+        const currentActive = current?.isActive ?? false;
+        const changed = !current || currentPrice !== nextPrice || currentActive !== isActive;
+        if (!changed) continue;
+        changedHistoryRows.push({
+          customer_id: selectedCustomerId,
+          product_id: product.id,
+          price: nextPrice,
+          is_active: isActive,
+          effective_from: effectiveFrom,
+        });
+      }
+
+      if (changedHistoryRows.length > 0) {
+        const { error: historyError } = await supabase.from("customer_price_history").insert(changedHistoryRows);
+        if (historyError) {
+          throw historyError;
+        }
       }
     },
     onSuccess: async () => {

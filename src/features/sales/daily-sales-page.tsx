@@ -113,7 +113,9 @@ async function fetchHandledProductsByCustomer(customerId: string) {
 async function fetchSalesByRange(fromDate: string, toDate: string) {
   const { data, error } = await supabase
     .from("sales_daily")
-    .select("id, customer_id, product_id, quantity, unit_price, total_amount, supply_date, remark, is_paid, delivery_status")
+    .select(
+      "id, customer_id, product_id, quantity, unit_price, recorded_unit_price, recorded_unit, total_amount, supply_date, remark, is_paid, delivery_status",
+    )
     .gte("supply_date", fromDate)
     .lte("supply_date", toDate)
     .order("supply_date", { ascending: false })
@@ -265,21 +267,26 @@ export function DailySalesPage() {
         return;
       }
 
-      const { data: existingRow, error: existingRowError } = await supabase
+      const { data: existingRows, error: existingRowError } = await supabase
         .from("sales_daily")
-        .select("id, quantity, unit_price")
+        .select("id, quantity, unit_price, recorded_unit_price, recorded_unit, created_at")
         .eq("supply_date", entryDate)
         .eq("customer_id", selectedCustomerId)
         .eq("product_id", selectedProductId)
-        .maybeSingle();
+        .order("created_at", { ascending: false });
 
       if (existingRowError) {
         throw existingRowError;
       }
 
-      if (existingRow) {
-        const mergedQuantity = existingRow.quantity + quantity;
-        const mergedUnitPrice = unitPrice || existingRow.unit_price;
+      const currentPrice = unitPrice;
+      const matchedRow =
+        (existingRows ?? []).find((row) => Number(row.recorded_unit_price ?? row.unit_price ?? 0) === currentPrice) ?? null;
+
+      if (matchedRow) {
+        const mergedQuantity = matchedRow.quantity + quantity;
+        const mergedUnitPrice = currentPrice || matchedRow.recorded_unit_price || matchedRow.unit_price;
+        const recordedUnit = matchedRow.recorded_unit ?? selectedProduct?.specification ?? null;
         const mergedTotalAmount = mergedUnitPrice * mergedQuantity;
 
         const { error: updateError } = await supabase
@@ -287,9 +294,11 @@ export function DailySalesPage() {
           .update({
             quantity: mergedQuantity,
             unit_price: mergedUnitPrice,
+            recorded_unit_price: mergedUnitPrice,
+            recorded_unit: recordedUnit,
             total_amount: mergedTotalAmount,
           })
-          .eq("id", existingRow.id);
+          .eq("id", matchedRow.id);
 
         if (updateError) {
           throw updateError;
@@ -303,6 +312,8 @@ export function DailySalesPage() {
         product_id: selectedProductId,
         quantity,
         unit_price: unitPrice,
+        recorded_unit_price: unitPrice,
+        recorded_unit: selectedProduct?.specification ?? null,
         total_amount: unitPrice * quantity,
         is_paid: false,
         delivery_status: "pending",
@@ -380,6 +391,8 @@ export function DailySalesPage() {
         .update({
           quantity,
           unit_price: unitPrice,
+          recorded_unit_price: unitPrice,
+          recorded_unit: editingRow.recorded_unit ?? null,
           total_amount: quantity * unitPrice,
           remark: editRemark.trim() || null,
         })
@@ -467,7 +480,7 @@ export function DailySalesPage() {
   const openEditDialog = (row: SalesDailyRow) => {
     setEditingRow(row);
     setEditQuantityText(String(row.quantity));
-    setEditUnitPriceText(String(row.unit_price));
+    setEditUnitPriceText(String(row.recorded_unit_price ?? row.unit_price));
     setEditRemark(row.remark ?? "");
   };
 
@@ -616,7 +629,7 @@ export function DailySalesPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">{row.quantity.toLocaleString()}</TableCell>
-                    <TableCell className="text-right">{row.unit_price.toLocaleString()}</TableCell>
+                    <TableCell className="text-right">{Number(row.recorded_unit_price ?? row.unit_price).toLocaleString()}</TableCell>
                     <TableCell className="text-right font-medium">{row.total_amount.toLocaleString()}</TableCell>
                     <TableCell>
                       <Button

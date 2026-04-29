@@ -192,10 +192,18 @@ export function DailyDepositsPage() {
             border: 1px solid #444;
             padding: 4px 6px;
             vertical-align: middle;
+            white-space: normal !important;
+            overflow-wrap: anywhere;
+            word-break: break-word;
           }
           .daily-deposits-page th {
             background: #f3f4f6 !important;
             font-weight: 600;
+            text-align: center;
+          }
+          .daily-deposits-page td.text-right {
+            text-align: right !important;
+            font-variant-numeric: tabular-nums;
           }
         }
       `}</style>

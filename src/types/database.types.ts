@@ -134,6 +134,61 @@ export type Database = {
           },
         ];
       };
+      customer_price_history: {
+        Row: {
+          company_id: string;
+          created_at: string;
+          customer_id: string;
+          effective_from: string;
+          id: string;
+          is_active: boolean;
+          price: number;
+          product_id: string;
+        };
+        Insert: {
+          company_id?: string;
+          created_at?: string;
+          customer_id: string;
+          effective_from?: string;
+          id?: string;
+          is_active?: boolean;
+          price: number;
+          product_id: string;
+        };
+        Update: {
+          company_id?: string;
+          created_at?: string;
+          customer_id?: string;
+          effective_from?: string;
+          id?: string;
+          is_active?: boolean;
+          price?: number;
+          product_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "customer_price_history_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "customer_price_history_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "customer_price_history_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       customers: {
         Row: {
           address: string | null;
@@ -512,6 +567,8 @@ export type Database = {
           is_paid: boolean | null;
           product_id: string | null;
           quantity: number;
+          recorded_unit: string | null;
+          recorded_unit_price: number | null;
           remark: string | null;
           supply_date: string;
           total_amount: number;
@@ -527,6 +584,8 @@ export type Database = {
           is_paid?: boolean | null;
           product_id?: string | null;
           quantity: number;
+          recorded_unit?: string | null;
+          recorded_unit_price?: number | null;
           remark?: string | null;
           supply_date: string;
           total_amount: number;
@@ -542,6 +601,8 @@ export type Database = {
           is_paid?: boolean | null;
           product_id?: string | null;
           quantity?: number;
+          recorded_unit?: string | null;
+          recorded_unit_price?: number | null;
           remark?: string | null;
           supply_date?: string;
           total_amount?: number;

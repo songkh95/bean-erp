@@ -258,6 +258,7 @@ export function DepositsPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[110px]">일자</TableHead>
               <TableHead>거래처명</TableHead>
               <TableHead className="text-right">미수잔액(참고)</TableHead>
               <TableHead className="w-[200px]">입금액</TableHead>
@@ -268,14 +269,14 @@ export function DepositsPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-slate-500">
+                <TableCell colSpan={6} className="py-8 text-center text-slate-500">
                   미수잔액 데이터를 불러오는 중입니다...
                 </TableCell>
               </TableRow>
             )}
             {!isLoading && customers.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-slate-500">
+                <TableCell colSpan={6} className="py-8 text-center text-slate-500">
                   활성 거래처가 없습니다.
                 </TableCell>
               </TableRow>
@@ -285,6 +286,7 @@ export function DepositsPage() {
                 const draft = draftByCustomerId[customer.id] ?? { amountText: "", paymentMethod: "통장", note: "" };
                 return (
                   <TableRow key={customer.id}>
+                    <TableCell>{appliedTo}</TableCell>
                     <TableCell>
                       <div className="font-medium">{customer.name}</div>
                       <div className="text-xs text-slate-500">{customer.code}</div>
@@ -292,6 +294,7 @@ export function DepositsPage() {
                     <TableCell className="text-right">{(outstandingByCustomerId.get(customer.id) ?? 0).toLocaleString()}</TableCell>
                     <TableCell>
                       <Input
+                        className="deposits-edit-only"
                         ref={(element) => {
                           amountInputRefs.current[customer.id] = element;
                         }}
@@ -314,10 +317,13 @@ export function DepositsPage() {
                           }
                         }}
                       />
+                      <span className="deposits-print-only hidden">
+                        {draft.amountText ? Number(draft.amountText).toLocaleString() : ""}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <select
-                        className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                        className="deposits-edit-only flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
                         value={draft.paymentMethod}
                         onChange={(event) =>
                           setDraftByCustomerId((prev) => ({
@@ -335,9 +341,11 @@ export function DepositsPage() {
                           </option>
                         ))}
                       </select>
+                      <span className="deposits-print-only hidden">{draft.paymentMethod || ""}</span>
                     </TableCell>
                     <TableCell>
                       <Input
+                        className="deposits-edit-only"
                         value={draft.note}
                         placeholder="적요 입력"
                         onChange={(event) =>
@@ -350,15 +358,17 @@ export function DepositsPage() {
                           }))
                         }
                       />
+                      <span className="deposits-print-only hidden">{draft.note.trim()}</span>
                     </TableCell>
                   </TableRow>
                 );
               })}
             {!isLoading && customers.length > 0 && (
               <TableRow className="bg-slate-50">
-                <TableCell className="font-semibold">총 입금 예정 합계</TableCell>
                 <TableCell />
+                <TableCell className="font-semibold">총 입금 예정 합계</TableCell>
                 <TableCell className="font-semibold text-right">{plannedTotalAmount.toLocaleString()}</TableCell>
+                <TableCell />
                 <TableCell />
                 <TableCell />
               </TableRow>
@@ -411,16 +421,26 @@ export function DepositsPage() {
             border: 1px solid #444;
             padding: 4px 6px;
             vertical-align: middle;
+            white-space: normal !important;
+            overflow-wrap: anywhere;
+            word-break: break-word;
           }
           .deposits-page th {
             background: #f3f4f6 !important;
             font-weight: 600;
+            text-align: center;
           }
-          .deposits-page input,
-          .deposits-page select {
-            border: none !important;
-            height: auto !important;
-            padding: 0 !important;
+          .deposits-page td.text-right {
+            text-align: right !important;
+            font-variant-numeric: tabular-nums;
+          }
+          .deposits-edit-only {
+            display: none !important;
+          }
+          .deposits-print-only {
+            display: inline !important;
+            white-space: pre-wrap;
+            line-height: 1.3;
           }
         }
       `}</style>

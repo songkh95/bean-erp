@@ -23,6 +23,7 @@ const menuItems = [
   { href: "/sales/delivery-sheet", label: "배송지시서 출력", icon: ClipboardList, isChild: true },
   { href: "/settlement/invoice", label: "정산 관리", icon: FileText, matchPrefix: "/settlement" },
   { href: "/settlement/invoice", label: "└ 거래명세서", icon: FileText, isChild: true },
+  { href: "/settlement/pivot-invoice", label: "└ 품목 집계 명세서", icon: FileText, isChild: true },
   { href: "/settlement/deposits", label: "└ 입금 등록", icon: FileText, isChild: true },
   { href: "/settlement/daily-deposits", label: "└ 수금일보", icon: FileText, isChild: true },
   { href: "/settlement/balances", label: "└ 외상잔액 명세", icon: FileText, isChild: true },

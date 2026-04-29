@@ -503,6 +503,17 @@ export function DeliverySheetPage() {
           padding: 6px 8px;
           color: black;
           background: white;
+          white-space: normal !important;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+          vertical-align: middle;
+        }
+        .print-excel-table th {
+          text-align: center;
+        }
+        .print-excel-table td.text-right {
+          text-align: right !important;
+          font-variant-numeric: tabular-nums;
         }
 
         .print-header-table {

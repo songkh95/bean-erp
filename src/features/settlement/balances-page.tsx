@@ -170,6 +170,7 @@ export function BalancesPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[110px]">일자</TableHead>
               <TableHead>거래처명</TableHead>
               <TableHead className="text-right">전월 이월잔액</TableHead>
               <TableHead className="text-right">기간 매출액</TableHead>
@@ -180,14 +181,14 @@ export function BalancesPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-slate-500">
+                <TableCell colSpan={6} className="py-8 text-center text-slate-500">
                   데이터를 불러오는 중입니다...
                 </TableCell>
               </TableRow>
             )}
             {!isLoading && summaryRows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-slate-500">
+                <TableCell colSpan={6} className="py-8 text-center text-slate-500">
                   집계할 데이터가 없습니다.
                 </TableCell>
               </TableRow>
@@ -195,6 +196,7 @@ export function BalancesPage() {
             {!isLoading &&
               summaryRows.map((row) => (
                 <TableRow key={row.customerId}>
+                  <TableCell>{appliedTo}</TableCell>
                   <TableCell>{row.customerName}</TableCell>
                   <TableCell className="text-right">{row.carryOverAmount.toLocaleString()}</TableCell>
                   <TableCell className="text-right">{row.periodSales.toLocaleString()}</TableCell>
@@ -248,10 +250,18 @@ export function BalancesPage() {
             border: 1px solid #444;
             padding: 4px 6px;
             vertical-align: middle;
+            white-space: normal !important;
+            overflow-wrap: anywhere;
+            word-break: break-word;
           }
           .balances-ledger-page th {
             background: #f3f4f6 !important;
             font-weight: 600;
+            text-align: center;
+          }
+          .balances-ledger-page td.text-right {
+            text-align: right !important;
+            font-variant-numeric: tabular-nums;
           }
         }
       `}</style>
