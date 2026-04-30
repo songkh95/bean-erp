@@ -262,6 +262,8 @@ export type Database = {
           id: string;
           is_active: boolean;
           name: string;
+          note: string | null;
+          phone: string | null;
           region_groups: string[];
           vehicle_number: string;
         };
@@ -271,6 +273,8 @@ export type Database = {
           id?: string;
           is_active?: boolean;
           name: string;
+          note?: string | null;
+          phone?: string | null;
           region_groups?: string[];
           vehicle_number: string;
         };
@@ -280,6 +284,8 @@ export type Database = {
           id?: string;
           is_active?: boolean;
           name?: string;
+          note?: string | null;
+          phone?: string | null;
           region_groups?: string[];
           vehicle_number?: string;
         };

@@ -19,6 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { fetchCurrentCompanyId } from "@/lib/current-company";
+import { assertHeadersMatch, generateTemplate, parseExcel } from "@/lib/excel-utils";
 import { supabase } from "@/lib/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/types/database.types";
 
@@ -27,6 +29,17 @@ type CustomerInsert = TablesInsert<"customers">;
 type CustomerUpdate = TablesUpdate<"customers">;
 type RegionRow = Tables<"regions">;
 type RegionInsert = TablesInsert<"regions">;
+
+const CUSTOMER_EXCEL_HEADERS = [
+  "거래처명",
+  "대표자",
+  "연락처",
+  "주소",
+  "지역",
+  "사업자번호",
+  "이메일",
+  "비고",
+] as const;
 
 const customerFields = [
   "code",
@@ -91,6 +104,8 @@ export function CustomerManagement() {
   const [form, setForm] = useState<CustomerInsert>(initialForm);
   const [regionInput, setRegionInput] = useState("");
   const [isRegionMenuOpen, setIsRegionMenuOpen] = useState(false);
+  const [excelBusy, setExcelBusy] = useState(false);
+  const excelInputRef = useRef<HTMLInputElement>(null);
   const refs = useRef<Record<string, HTMLElement | null>>({});
 
   const { data: customers, isLoading } = useQuery({
@@ -294,9 +309,158 @@ export function CustomerManagement() {
     refs.current[nextKey]?.focus();
   };
 
+  const handleDownloadCustomerTemplate = async () => {
+    try {
+      setExcelBusy(true);
+      await generateTemplate({
+        headers: [...CUSTOMER_EXCEL_HEADERS],
+        filename: "거래처_등록_양식",
+        sheetName: "거래처",
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "양식을 만드는 중 오류가 발생했습니다.");
+    } finally {
+      setExcelBusy(false);
+    }
+  };
+
+  const handleCustomerExcelSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+
+    setExcelBusy(true);
+    try {
+      const { headers, rows } = await parseExcel(file);
+      assertHeadersMatch(CUSTOMER_EXCEL_HEADERS, headers);
+
+      const companyId = await fetchCurrentCompanyId();
+      if (!companyId) {
+        toast.error("로그인 또는 회사(테넌트) 정보를 확인할 수 없습니다.");
+        return;
+      }
+
+      const regionCodes = [...new Set(rows.map((r) => r["지역"]?.trim()).filter(Boolean))] as string[];
+      const regionIdByCode = new Map<string, string>();
+
+      for (const rawCode of regionCodes) {
+        const { data: existing, error: findError } = await supabase
+          .from("regions")
+          .select("id")
+          .ilike("code", rawCode)
+          .maybeSingle();
+
+        if (findError) {
+          throw new Error(`지역 "${rawCode}" 조회 실패: ${findError.message}`);
+        }
+
+        if (existing?.id) {
+          regionIdByCode.set(rawCode, existing.id);
+          continue;
+        }
+
+        const insertPayload: RegionInsert = {
+          code: rawCode,
+          name: rawCode,
+        };
+        const { data: created, error: regionInsertError } = await supabase
+          .from("regions")
+          .insert(insertPayload)
+          .select("id")
+          .single();
+
+        if (regionInsertError) {
+          throw new Error(`지역 "${rawCode}" 생성 실패: ${regionInsertError.message}`);
+        }
+
+        regionIdByCode.set(rawCode, created.id);
+      }
+
+      const rowErrors: string[] = [];
+      const payloads: CustomerInsert[] = [];
+
+      rows.forEach((row, idx) => {
+        const line = idx + 2;
+        const name = row["거래처명"]?.trim();
+        if (!name) {
+          rowErrors.push(`${line}행: 거래처명은 필수입니다.`);
+          return;
+        }
+
+        const regionCode = row["지역"]?.trim();
+        let regionId: string | null = null;
+        if (regionCode) {
+          const resolved = regionIdByCode.get(regionCode);
+          if (!resolved) {
+            rowErrors.push(`${line}행: 지역 "${regionCode}"를 등록할 수 없습니다.`);
+            return;
+          }
+          regionId = resolved;
+        }
+
+        const email = row["이메일"]?.trim();
+        const noteText = row["비고"]?.trim();
+        const noteParts: string[] = [];
+        if (email) {
+          noteParts.push(`이메일: ${email}`);
+        }
+        if (noteText) {
+          noteParts.push(noteText);
+        }
+        const combinedNote = noteParts.length > 0 ? noteParts.join("\n") : null;
+
+        const code = `C-${globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+        payloads.push({
+          code,
+          company_id: companyId,
+          name,
+          ceo_name: row["대표자"]?.trim() || null,
+          phone: row["연락처"]?.trim() || null,
+          address: row["주소"]?.trim() || null,
+          business_number: row["사업자번호"]?.trim() || null,
+          region_id: regionId,
+          tax_type: null,
+          note: combinedNote,
+          is_active: true,
+        });
+      });
+
+      if (payloads.length === 0) {
+        toast.error(rowErrors.length ? rowErrors.slice(0, 8).join("\n") : "등록할 유효한 행이 없습니다.");
+        return;
+      }
+
+      const chunkSize = 80;
+      for (let i = 0; i < payloads.length; i += chunkSize) {
+        const chunk = payloads.slice(i, i + chunkSize);
+        const { error: insertError } = await supabase.from("customers").insert(chunk);
+        if (insertError) {
+          throw new Error(insertError.message || "거래처 일괄 등록에 실패했습니다.");
+        }
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["customers"] });
+      await queryClient.invalidateQueries({ queryKey: ["regions"] });
+
+      const okMsg = `성공적으로 ${payloads.length.toLocaleString()}건의 거래처가 등록되었습니다.`;
+      if (rowErrors.length) {
+        toast.success(okMsg, { description: `일부 행은 건너뜀:\n${rowErrors.slice(0, 6).join("\n")}${rowErrors.length > 6 ? `\n… 외 ${rowErrors.length - 6}건` : ""}` });
+      } else {
+        toast.success(okMsg);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "엑셀 처리 중 오류가 발생했습니다.");
+    } finally {
+      setExcelBusy(false);
+    }
+  };
+
   return (
     <section className="space-y-4 rounded-lg border bg-white p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold">거래처 관리</h2>
           <p className="text-sm text-slate-600">거래처 기본 정보를 등록하고 관리합니다.</p>
@@ -304,18 +468,38 @@ export function CustomerManagement() {
             총 거래처 수: {totalCustomers.toLocaleString()} (사용: {activeCustomers.toLocaleString()})
           </p>
         </div>
-        <Dialog
-          open={open}
-          onOpenChange={(nextOpen) => {
-            setOpen(nextOpen);
-            if (!nextOpen) {
-              setEditingId(null);
-              setRegionInput("");
-              setIsRegionMenuOpen(false);
-            }
-          }}
-        >
-          <Button onClick={openCreateDialog}>신규 거래처 등록</Button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <input
+            ref={excelInputRef}
+            type="file"
+            accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            className="sr-only"
+            onChange={handleCustomerExcelSelected}
+          />
+          <Button type="button" variant="outline" disabled={excelBusy} onClick={handleDownloadCustomerTemplate}>
+            양식 받기
+          </Button>
+          <Button
+            type="button"
+            disabled={excelBusy}
+            onClick={() => {
+              excelInputRef.current?.click();
+            }}
+          >
+            엑셀 올리기
+          </Button>
+          <Dialog
+            open={open}
+            onOpenChange={(nextOpen) => {
+              setOpen(nextOpen);
+              if (!nextOpen) {
+                setEditingId(null);
+                setRegionInput("");
+                setIsRegionMenuOpen(false);
+              }
+            }}
+          >
+            <Button onClick={openCreateDialog}>신규 거래처 등록</Button>
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>{editingId ? "거래처 정보 수정" : "신규 거래처 등록"}</DialogTitle>
@@ -501,6 +685,7 @@ export function CustomerManagement() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Table>

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { fetchCurrentCompanyId } from "@/lib/current-company";
+import { assertHeadersMatch, generateTemplate, parseExcel } from "@/lib/excel-utils";
 import { supabase } from "@/lib/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/types/database.types";
 
@@ -27,9 +29,23 @@ type DriverInsert = TablesInsert<"delivery_drivers">;
 type DriverUpdate = TablesUpdate<"delivery_drivers">;
 type RegionRow = Tables<"regions">;
 
+const DRIVER_EXCEL_HEADERS = ["기사명", "연락처", "차량번호", "소속", "비고"] as const;
+
+function parseDriverRegionGroups(raw: string | undefined): string[] {
+  if (!raw?.trim()) {
+    return [];
+  }
+  return raw
+    .split(/[,，、]/u)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 const initialForm: DriverInsert = {
   name: "",
   vehicle_number: "",
+  phone: null,
+  note: null,
   region_groups: [],
   is_active: true,
 };
@@ -44,7 +60,7 @@ function getDriverSaveErrorMessage(error: { code?: string; message?: string }) {
 async function fetchDrivers() {
   const { data, error } = await supabase
     .from("delivery_drivers")
-    .select("id, name, vehicle_number, region_groups, is_active, created_at")
+    .select("id, name, phone, note, vehicle_number, region_groups, is_active, created_at")
     .order("created_at", { ascending: false });
   if (error) {
     throw error;
@@ -65,6 +81,8 @@ export function DriverManagement() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DriverInsert>(initialForm);
+  const [excelBusy, setExcelBusy] = useState(false);
+  const excelInputRef = useRef<HTMLInputElement>(null);
 
   const { data: drivers = [], isLoading } = useQuery({
     queryKey: ["delivery-drivers"],
@@ -91,6 +109,8 @@ export function DriverManagement() {
         const updatePayload: DriverUpdate = {
           name: payload.name,
           vehicle_number: payload.vehicle_number,
+          phone: payload.phone ?? null,
+          note: payload.note ?? null,
           region_groups: payload.region_groups ?? [],
           is_active: payload.is_active ?? true,
         };
@@ -145,10 +165,105 @@ export function DriverManagement() {
     setForm({
       name: driver.name,
       vehicle_number: driver.vehicle_number,
+      phone: driver.phone ?? null,
+      note: driver.note ?? null,
       region_groups: driver.region_groups ?? [],
       is_active: driver.is_active,
     });
     setOpen(true);
+  };
+
+  const handleDownloadDriverTemplate = async () => {
+    try {
+      setExcelBusy(true);
+      await generateTemplate({
+        headers: [...DRIVER_EXCEL_HEADERS],
+        filename: "배송기사_등록_양식",
+        sheetName: "배송기사",
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "양식을 만드는 중 오류가 발생했습니다.");
+    } finally {
+      setExcelBusy(false);
+    }
+  };
+
+  const handleDriverExcelSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+
+    setExcelBusy(true);
+    try {
+      const { headers, rows } = await parseExcel(file);
+      assertHeadersMatch(DRIVER_EXCEL_HEADERS, headers);
+
+      const companyId = await fetchCurrentCompanyId();
+      if (!companyId) {
+        toast.error("로그인 또는 회사(테넌트) 정보를 확인할 수 없습니다.");
+        return;
+      }
+
+      const rowErrors: string[] = [];
+      const payloads: DriverInsert[] = [];
+
+      rows.forEach((row, idx) => {
+        const line = idx + 2;
+        const name = row["기사명"]?.trim();
+        const vehicleNumber = row["차량번호"]?.trim();
+        if (!name) {
+          rowErrors.push(`${line}행: 기사명은 필수입니다.`);
+          return;
+        }
+        if (!vehicleNumber) {
+          rowErrors.push(`${line}행: 차량번호는 필수입니다.`);
+          return;
+        }
+
+        payloads.push({
+          company_id: companyId,
+          name,
+          vehicle_number: vehicleNumber,
+          phone: row["연락처"]?.trim() || null,
+          note: row["비고"]?.trim() || null,
+          region_groups: parseDriverRegionGroups(row["소속"]),
+          is_active: true,
+        });
+      });
+
+      if (payloads.length === 0) {
+        toast.error(rowErrors.length ? rowErrors.slice(0, 8).join("\n") : "등록할 유효한 행이 없습니다.");
+        return;
+      }
+
+      const chunkSize = 80;
+      for (let i = 0; i < payloads.length; i += chunkSize) {
+        const chunk = payloads.slice(i, i + chunkSize);
+        const { error: upsertError } = await supabase.from("delivery_drivers").upsert(chunk, {
+          onConflict: "company_id,vehicle_number",
+        });
+        if (upsertError) {
+          throw new Error(upsertError.message || "배송기사 일괄 저장에 실패했습니다.");
+        }
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["delivery-drivers"] });
+
+      const okMsg = `성공적으로 ${payloads.length.toLocaleString()}건의 배송기사가 등록되었습니다.`;
+      if (rowErrors.length) {
+        toast.success(okMsg, {
+          description: `일부 행은 건너뜀:\n${rowErrors.slice(0, 6).join("\n")}${rowErrors.length > 6 ? `\n… 외 ${rowErrors.length - 6}건` : ""}`,
+        });
+      } else {
+        toast.success(okMsg);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "엑셀 처리 중 오류가 발생했습니다.");
+    } finally {
+      setExcelBusy(false);
+    }
   };
 
   const toggleRegionCode = (regionCode: string, checked: boolean) => {
@@ -162,7 +277,7 @@ export function DriverManagement() {
 
   return (
     <section className="space-y-4 rounded-lg border bg-white p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold">배송기사 관리</h2>
           <p className="text-sm text-slate-600">기사와 차량, 담당 지역을 등록하고 수정합니다.</p>
@@ -170,8 +285,28 @@ export function DriverManagement() {
             총 기사 수: {totalDrivers.toLocaleString()} (사용: {activeDrivers.toLocaleString()})
           </p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <Button onClick={openCreateDialog}>신규 기사 등록</Button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <input
+            ref={excelInputRef}
+            type="file"
+            accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            className="sr-only"
+            onChange={handleDriverExcelSelected}
+          />
+          <Button type="button" variant="outline" disabled={excelBusy} onClick={handleDownloadDriverTemplate}>
+            양식 받기
+          </Button>
+          <Button
+            type="button"
+            disabled={excelBusy}
+            onClick={() => {
+              excelInputRef.current?.click();
+            }}
+          >
+            엑셀 올리기
+          </Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <Button onClick={openCreateDialog}>신규 기사 등록</Button>
           <DialogContent className="max-w-xl">
             <DialogHeader>
               <DialogTitle>{editingId ? "배송기사 수정" : "신규 배송기사 등록"}</DialogTitle>
@@ -192,6 +327,24 @@ export function DriverManagement() {
                   id="driver-vehicle"
                   value={form.vehicle_number ?? ""}
                   onChange={(event) => setForm((prev) => ({ ...prev, vehicle_number: event.target.value }))}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="driver-phone">연락처</Label>
+                <Input
+                  id="driver-phone"
+                  value={form.phone ?? ""}
+                  onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value || null }))}
+                  placeholder="선택"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="driver-note">비고</Label>
+                <Input
+                  id="driver-note"
+                  value={form.note ?? ""}
+                  onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value || null }))}
+                  placeholder="선택"
                 />
               </div>
               <div className="grid gap-2">
@@ -237,14 +390,17 @@ export function DriverManagement() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>기사명</TableHead>
+            <TableHead>연락처</TableHead>
             <TableHead>차량번호</TableHead>
             <TableHead>담당 지역</TableHead>
+            <TableHead>비고</TableHead>
             <TableHead>사용여부</TableHead>
             <TableHead className="w-24">수정</TableHead>
             <TableHead className="w-24">삭제</TableHead>
@@ -253,14 +409,14 @@ export function DriverManagement() {
         <TableBody>
           {isLoading && (
             <TableRow>
-              <TableCell colSpan={6} className="py-8 text-center text-slate-500">
+              <TableCell colSpan={8} className="py-8 text-center text-slate-500">
                 데이터를 불러오는 중입니다...
               </TableCell>
             </TableRow>
           )}
           {!isLoading && drivers.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="py-8 text-center text-slate-500">
+              <TableCell colSpan={8} className="py-8 text-center text-slate-500">
                 등록된 배송기사가 없습니다.
               </TableCell>
             </TableRow>
@@ -274,8 +430,10 @@ export function DriverManagement() {
               return (
                 <TableRow key={driver.id}>
                   <TableCell>{driver.name}</TableCell>
+                  <TableCell>{driver.phone ?? "-"}</TableCell>
                   <TableCell>{driver.vehicle_number}</TableCell>
                   <TableCell>{regionText || "-"}</TableCell>
+                  <TableCell>{driver.note ?? "-"}</TableCell>
                   <TableCell>{driver.is_active ? "사용" : "미사용"}</TableCell>
                   <TableCell>
                     <Button variant="outline" size="sm" onClick={() => openEditDialog(driver)}>
