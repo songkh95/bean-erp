@@ -16,6 +16,7 @@ import {
   fetchCompanyProfileForUser,
   type CompanyProfileQueryData,
 } from "@/lib/queries/company-profile";
+import { resetCompanyDataClient } from "@/lib/reset-company-data";
 import { supabase } from "@/lib/supabase/client";
 
 const COMPANY_FIELD_ORDER = [
@@ -68,6 +69,10 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  const [resetDataAck, setResetDataAck] = useState(false);
+  const [resetDataPhrase, setResetDataPhrase] = useState("");
+  const canExecuteDataReset = resetDataAck && resetDataPhrase.trim() === "초기화";
+
   useEffect(() => {
     setCompanyForm(toFormState(data ?? undefined));
   }, [data]);
@@ -111,6 +116,21 @@ export default function SettingsPage() {
       toast.success("비밀번호를 변경했습니다.");
       setNewPassword("");
       setConfirmPassword("");
+      router.refresh();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const resetAllCompanyData = useMutation({
+    mutationFn: async () => {
+      await resetCompanyDataClient(supabase);
+    },
+    onSuccess: async () => {
+      toast.success("회사 데이터를 모두 초기화했습니다.");
+      setResetDataAck(false);
+      setResetDataPhrase("");
+      await queryClient.invalidateQueries();
+      await queryClient.invalidateQueries({ queryKey: companyProfileQueryKey });
       router.refresh();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -199,6 +219,7 @@ export default function SettingsPage() {
         <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="company">회사 정보</TabsTrigger>
           <TabsTrigger value="security">보안 설정</TabsTrigger>
+          <TabsTrigger value="data">데이터</TabsTrigger>
         </TabsList>
 
         <TabsContent value="company" className="mt-4">
@@ -310,6 +331,58 @@ export default function SettingsPage() {
                   {updateCompany.isPending ? "저장 중…" : "저장"}
                 </Button>
               </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="data" className="mt-4">
+          <Card className="border-destructive/40">
+            <CardHeader>
+              <CardTitle className="text-destructive">데이터 초기화</CardTitle>
+              <CardDescription>
+                판매·입금·단가 이력·거래처·품목·지역·배송기사 등 운영 데이터를 모두 삭제합니다. 로그인 계정과 회사는 유지되며, 삭제된 데이터는 복구할 수
+                없습니다. 회사명은 유지되고, 은행 계좌·사업자번호 등 회사 프로필 항목은 비워집니다.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <label className="flex cursor-pointer items-start gap-3 text-sm leading-snug">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 shrink-0 accent-destructive"
+                  checked={resetDataAck}
+                  onChange={(e) => setResetDataAck(e.target.checked)}
+                />
+                <span>위 안내를 읽었고, 되돌릴 수 없음을 이해했습니다.</span>
+              </label>
+              <div className="space-y-2">
+                <Label htmlFor="settings-data-reset-phrase">확인을 위해 아래 입력란에 초기화라고 입력하세요.</Label>
+                <Input
+                  id="settings-data-reset-phrase"
+                  value={resetDataPhrase}
+                  onChange={(e) => setResetDataPhrase(e.target.value)}
+                  placeholder="초기화"
+                  autoComplete="off"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={!canExecuteDataReset || resetAllCompanyData.isPending}
+                onClick={() => {
+                  if (!canExecuteDataReset) {
+                    return;
+                  }
+                  const ok = window.confirm(
+                    "정말로 이 회사의 모든 운영 데이터를 삭제할까요? 이 작업은 되돌릴 수 없습니다.",
+                  );
+                  if (!ok) {
+                    return;
+                  }
+                  void resetAllCompanyData.mutateAsync();
+                }}
+              >
+                {resetAllCompanyData.isPending ? "처리 중…" : "모든 데이터 초기화 실행"}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

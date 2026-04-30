@@ -665,6 +665,10 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: string;
       };
+      reset_my_company_data: {
+        Args: Record<PropertyKey, never>;
+        Returns: undefined;
+      };
     };
     Enums: {
       [_ in never]: never;

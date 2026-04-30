@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DateRange } from "react-day-picker";
 import { toast } from "sonner";
@@ -10,10 +11,15 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/lib/supabase/client";
-import type { Tables, TablesInsert } from "@/types/database.types";
+import type { Tables, TablesInsert, TablesUpdate } from "@/types/database.types";
 
 type CustomerRow = Tables<"customers">;
 type DepositInsert = TablesInsert<"deposits">;
+type DepositUpdate = TablesUpdate<"deposits">;
+type DepositListRow = Pick<
+  Tables<"deposits">,
+  "id" | "customer_id" | "deposit_date" | "amount" | "payment_method" | "note" | "created_at"
+>;
 const paymentMethods = ["현금", "통장", "카드", "수표", "어음"] as const;
 
 type DraftRow = {
@@ -65,6 +71,20 @@ async function fetchDepositsUntil(toDate: string) {
   return (data ?? []) as Array<Pick<Tables<"deposits">, "customer_id" | "amount">>;
 }
 
+async function fetchDepositsInRange(fromDate: string, toDate: string) {
+  const { data, error } = await supabase
+    .from("deposits")
+    .select("id, customer_id, deposit_date, amount, payment_method, note, created_at")
+    .gte("deposit_date", fromDate)
+    .lte("deposit_date", toDate)
+    .order("deposit_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) {
+    throw error;
+  }
+  return (data ?? []) as DepositListRow[];
+}
+
 export function DepositsPage() {
   const queryClient = useQueryClient();
   const today = getToday();
@@ -96,6 +116,107 @@ export function DepositsPage() {
     queryKey: ["deposits-bulk", "deposits-until", appliedTo],
     queryFn: () => fetchDepositsUntil(appliedTo),
   });
+
+  const { data: registeredDeposits = [], isLoading: isRegisteredListLoading } = useQuery({
+    queryKey: ["deposits", "list", appliedFrom, appliedTo],
+    queryFn: () => fetchDepositsInRange(appliedFrom, appliedTo),
+  });
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editingIdRef = useRef<string | null>(null);
+  const [editAmountText, setEditAmountText] = useState("");
+  const [editPaymentMethod, setEditPaymentMethod] = useState<(typeof paymentMethods)[number]>("통장");
+  const [editNote, setEditNote] = useState("");
+  const [editDepositDate, setEditDepositDate] = useState("");
+
+  useEffect(() => {
+    editingIdRef.current = editingId;
+  }, [editingId]);
+
+  const customerById = useMemo(() => {
+    const map = new Map<string, CustomerRow>();
+    for (const c of customers) {
+      map.set(c.id, c);
+    }
+    return map;
+  }, [customers]);
+
+  const startEditDeposit = (row: DepositListRow) => {
+    setEditingId(row.id);
+    setEditAmountText(
+      Number.isFinite(Number(row.amount)) ? String(Number(row.amount)) : "",
+    );
+    setEditPaymentMethod(
+      paymentMethods.includes(row.payment_method as (typeof paymentMethods)[number])
+        ? (row.payment_method as (typeof paymentMethods)[number])
+        : "통장",
+    );
+    setEditNote(row.note ?? "");
+    setEditDepositDate(row.deposit_date);
+  };
+
+  const cancelEditDeposit = () => {
+    setEditingId(null);
+    setEditAmountText("");
+    setEditPaymentMethod("통장");
+    setEditNote("");
+    setEditDepositDate("");
+  };
+
+  const updateDepositMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: DepositUpdate }) => {
+      const { error } = await supabase.from("deposits").update(payload).eq("id", id);
+      if (error) {
+        throw error;
+      }
+    },
+    onSuccess: async () => {
+      toast.success("입금 내역을 수정했습니다.");
+      cancelEditDeposit();
+      await queryClient.invalidateQueries({ queryKey: ["deposits"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "수정 중 오류가 발생했습니다.");
+    },
+  });
+
+  const deleteDepositMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("deposits").delete().eq("id", id);
+      if (error) {
+        throw error;
+      }
+    },
+    onSuccess: async (_data, deletedId) => {
+      toast.success("입금 내역을 삭제했습니다.");
+      if (editingIdRef.current === deletedId) {
+        cancelEditDeposit();
+      }
+      await queryClient.invalidateQueries({ queryKey: ["deposits"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "삭제 중 오류가 발생했습니다.");
+    },
+  });
+
+  const saveEditedDeposit = (id: string) => {
+    const amount = Number(editAmountText.replaceAll(",", ""));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("입금액은 0보다 큰 숫자여야 합니다.");
+      return;
+    }
+    if (!editDepositDate) {
+      toast.error("입금일을 선택해 주세요.");
+      return;
+    }
+    const payload: DepositUpdate = {
+      amount,
+      payment_method: editPaymentMethod,
+      note: editNote.trim() || null,
+      deposit_date: editDepositDate,
+    };
+    updateDepositMutation.mutate({ id, payload });
+  };
 
   useEffect(() => {
     setDraftByCustomerId((prev) => {
@@ -383,6 +504,155 @@ export function DepositsPage() {
         </Button>
       </div>
 
+      <div className="space-y-2">
+        <h3 className="text-lg font-semibold">기간 내 등록된 입금</h3>
+        <p className="text-sm text-slate-600">
+          {appliedFrom} ~ {appliedTo} 범위에서 저장된 입금 건을 수정하거나 삭제할 수 있습니다.
+        </p>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="min-w-[120px]">입금일</TableHead>
+                <TableHead>거래처</TableHead>
+                <TableHead className="text-right">입금액</TableHead>
+                <TableHead className="min-w-[120px]">결제방법</TableHead>
+                <TableHead>적요</TableHead>
+                <TableHead className="deposits-registered-actions w-28">수정</TableHead>
+                <TableHead className="deposits-registered-actions w-28">삭제</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(isLoading || isRegisteredListLoading) && (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-8 text-center text-slate-500">
+                    불러오는 중입니다…
+                  </TableCell>
+                </TableRow>
+              )}
+              {!isLoading && !isRegisteredListLoading && registeredDeposits.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-8 text-center text-slate-500">
+                    이 기간에 등록된 입금이 없습니다.
+                  </TableCell>
+                </TableRow>
+              )}
+              {!isLoading &&
+                !isRegisteredListLoading &&
+                registeredDeposits.map((row) => {
+                  const cust = customerById.get(row.customer_id);
+                  const isEditing = editingId === row.id;
+                  return (
+                    <TableRow key={row.id}>
+                      <TableCell>
+                        {isEditing ? (
+                          <Input
+                            className="deposits-edit-only h-9"
+                            type="date"
+                            value={editDepositDate}
+                            onChange={(e) => setEditDepositDate(e.target.value)}
+                          />
+                        ) : (
+                          row.deposit_date
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">{cust?.name ?? "(삭제된 거래처)"}</div>
+                        <div className="text-xs text-slate-500">{cust?.code ?? ""}</div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {isEditing ? (
+                          <Input
+                            className="deposits-edit-only h-9 text-right"
+                            inputMode="numeric"
+                            value={editAmountText}
+                            onChange={(e) => setEditAmountText(e.target.value.replace(/[^\d]/g, ""))}
+                          />
+                        ) : (
+                          Number(row.amount).toLocaleString()
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isEditing ? (
+                          <select
+                            className="deposits-edit-only flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                            value={editPaymentMethod}
+                            onChange={(e) =>
+                              setEditPaymentMethod(e.target.value as (typeof paymentMethods)[number])
+                            }
+                          >
+                            {paymentMethods.map((method) => (
+                              <option key={method} value={method}>
+                                {method}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          row.payment_method
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isEditing ? (
+                          <Input
+                            className="deposits-edit-only h-9"
+                            value={editNote}
+                            onChange={(e) => setEditNote(e.target.value)}
+                            placeholder="적요"
+                          />
+                        ) : (
+                          row.note ?? "-"
+                        )}
+                      </TableCell>
+                      <TableCell className="deposits-registered-actions">
+                        {isEditing ? (
+                          <div className="flex flex-wrap gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={updateDepositMutation.isPending}
+                              onClick={() => saveEditedDeposit(row.id)}
+                            >
+                              저장
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" onClick={cancelEditDeposit}>
+                              취소
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!!editingId && editingId !== row.id}
+                            onClick={() => startEditDeposit(row)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </TableCell>
+                      <TableCell className="deposits-registered-actions">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          disabled={deleteDepositMutation.isPending || isEditing}
+                          onClick={() => {
+                            const ok = window.confirm("이 입금 내역을 삭제할까요?");
+                            if (!ok) return;
+                            deleteDepositMutation.mutate(row.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+
       <style jsx global>{`
         @media print {
           @page {
@@ -441,6 +711,9 @@ export function DepositsPage() {
             display: inline !important;
             white-space: pre-wrap;
             line-height: 1.3;
+          }
+          .deposits-registered-actions {
+            display: none !important;
           }
         }
       `}</style>
