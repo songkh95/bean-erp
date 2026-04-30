@@ -1,4 +1,10 @@
 import { supabase } from "@/lib/supabase/client";
+import type { Json } from "@/types/database.types";
+
+/** Narrows Supabase `Json` to a non-array object so field access type-checks. */
+function isJsonRecord(value: Json): value is { [key: string]: Json | undefined } {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
 export const companyProfileQueryKey = ["company", "profile"] as const;
 
@@ -45,7 +51,7 @@ export async function fetchCompanyProfileForUser(): Promise<CompanyProfileQueryD
     bank_accounts: Array.isArray(company.bank_accounts)
       ? company.bank_accounts
           .map((item) => {
-            if (!item || typeof item !== "object") {
+            if (!isJsonRecord(item)) {
               return null;
             }
             const bankName = typeof item.bank_name === "string" ? item.bank_name : "";
